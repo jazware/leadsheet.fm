@@ -30,6 +30,7 @@ type Server struct {
 	secureCookies bool
 	// Where the app is served from, without a trailing slash.
 	publicURL string
+	repoStars repoStars
 }
 
 type Config struct {
@@ -87,6 +88,7 @@ func New(cfg Config) *echo.Echo {
 
 	api := e.Group("/api")
 	api.GET("/session", s.handleSession)
+	api.GET("/about", s.handleAbout)
 	api.POST("/login", s.handleLogin)
 	api.POST("/logout", s.handleLogout)
 

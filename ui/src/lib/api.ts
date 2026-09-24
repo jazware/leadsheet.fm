@@ -145,6 +145,7 @@ const enc = encodeURIComponent
 
 export const api = {
   session: () => request<{ viewer: Author | null }>('GET', '/session'),
+  about: () => request<{ repo: string; repoUrl: string; stars: number | null }>('GET', '/about'),
   login: (identifier: string, returnTo: string) =>
     request<{ redirect: string }>('POST', '/login', { identifier, returnTo }),
   logout: () => request<void>('POST', '/logout'),

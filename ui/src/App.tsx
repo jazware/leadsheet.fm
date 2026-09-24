@@ -10,6 +10,7 @@ import { LoginDialog } from '@/components/LoginDialog'
 import { LoginContext, useLogin } from '@/components/login'
 import { Avatar } from '@/components/Author'
 import { Logo } from '@/components/Logo'
+import { Footer } from '@/components/Footer'
 import { SearchField } from '@/components/SearchField'
 import { HomePage } from '@/pages/HomePage'
 import { SearchPage } from '@/pages/SearchPage'
@@ -72,6 +73,7 @@ export default function App() {
             />
           </Routes>
         </main>
+        <Footer />
       </div>
       <LoginDialog open={login.open} reason={login.reason} onClose={() => setLogin({ open: false })} />
     </LoginContext.Provider>
