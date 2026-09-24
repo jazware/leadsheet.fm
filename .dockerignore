@@ -1,0 +1,6 @@
+.git
+bin/
+**/node_modules/
+ui/dist/
+env/*.env
+!env/*.env.example

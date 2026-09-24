@@ -1,0 +1,129 @@
+{
+  "lexicon": 1,
+  "id": "fm.leadsheet.sheet",
+  "description": "A chord sheet or tab for a song, written in ChordPro.",
+  "defs": {
+    "main": {
+      "type": "record",
+      "description": "A chord sheet or tab for a song, written in ChordPro.",
+      "key": "tid",
+      "record": {
+        "type": "object",
+        "required": [
+          "title",
+          "artist",
+          "content",
+          "createdAt"
+        ],
+        "properties": {
+          "title": {
+            "type": "string",
+            "maxLength": 1000,
+            "maxGraphemes": 200,
+            "description": "Song title."
+          },
+          "artist": {
+            "type": "string",
+            "maxLength": 1000,
+            "maxGraphemes": 200,
+            "description": "Performing artist, as credited on the recording this sheet follows."
+          },
+          "album": {
+            "type": "string",
+            "maxLength": 1000,
+            "maxGraphemes": 200
+          },
+          "kind": {
+            "type": "string",
+            "maxLength": 64,
+            "knownValues": [
+              "chords",
+              "tab",
+              "ukulele",
+              "bass"
+            ],
+            "default": "chords",
+            "description": "What the sheet is for: chords over lyrics, guitar tablature, ukulele chords, or bass."
+          },
+          "format": {
+            "type": "string",
+            "maxLength": 64,
+            "knownValues": [
+              "chordpro"
+            ],
+            "default": "chordpro",
+            "description": "Markup of `content`. ChordPro: inline [C]hords, {directives}, and {start_of_tab} blocks."
+          },
+          "content": {
+            "type": "string",
+            "maxLength": 100000,
+            "maxGraphemes": 50000
+          },
+          "key": {
+            "type": "string",
+            "maxLength": 16,
+            "description": "Key the sheet is written in, e.g. 'G' or 'F#m'."
+          },
+          "capo": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 12
+          },
+          "tuning": {
+            "type": "string",
+            "maxLength": 64,
+            "knownValues": [
+              "standard",
+              "eb-standard",
+              "d-standard",
+              "drop-d",
+              "drop-c",
+              "dadgad",
+              "open-d",
+              "open-g",
+              "open-e",
+              "open-c"
+            ]
+          },
+          "difficulty": {
+            "type": "string",
+            "maxLength": 32,
+            "knownValues": [
+              "beginner",
+              "intermediate",
+              "advanced"
+            ]
+          },
+          "description": {
+            "type": "string",
+            "maxLength": 10000,
+            "maxGraphemes": 3000,
+            "description": "Author's notes: strumming pattern, how the intro is played, etc."
+          },
+          "tags": {
+            "type": "array",
+            "maxLength": 10,
+            "items": {
+              "type": "string",
+              "maxLength": 640,
+              "maxGraphemes": 64
+            }
+          },
+          "forkOf": {
+            "type": "ref",
+            "ref": "com.atproto.repo.strongRef",
+            "description": "The sheet this one was derived from, as it was when forked."
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "datetime"
+          },
+          "updatedAt": {
+            "type": "string",
+            "format": "datetime"
+          }
+        }
+      }
+    }
+  }
+}

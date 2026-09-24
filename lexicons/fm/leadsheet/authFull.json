@@ -1,0 +1,19 @@
+{
+  "lexicon": 1,
+  "id": "fm.leadsheet.authFull",
+  "defs": {
+    "main": {
+      "type": "permission-set",
+      "description": "Everything the Leadsheet app does in an account's repo.",
+      "title": "Leadsheet",
+      "detail": "Publish, edit and delete your chord sheets, and rate and save other people's.",
+      "permissions": [
+        {
+          "type": "permission",
+          "resource": "repo",
+          "collection": ["fm.leadsheet.sheet", "fm.leadsheet.rating", "fm.leadsheet.favorite"]
+        }
+      ]
+    }
+  }
+}

@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+    <link rel="icon" href="/favicon-32.png" type="image/png" sizes="32x32" />
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+    <link rel="manifest" href="/site.webmanifest" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <meta name="theme-color" content="#0F1626" />
+    <!-- The server replaces everything between these markers with the page's title and link-preview tags. -->
+    <!--meta-->
+    <title>Leadsheet</title>
+    <!--/meta-->
+    <script>
+      // Apply the saved theme before first paint (no flash of night on day).
+      try {
+        if (JSON.parse(localStorage.getItem('leadsheet:theme')) === 'day') document.documentElement.dataset.theme = 'day'
+      } catch {}
+    </script>
+    <script type="module" crossorigin src="/assets/index-BSoxa6bv.js"></script>
+    <link rel="stylesheet" crossorigin href="/assets/index-C4M7zOH9.css">
+  </head>
+  <body>
+    <div id="root"></div>
+  </body>
+</html>

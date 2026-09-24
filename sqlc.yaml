@@ -1,0 +1,20 @@
+version: "2"
+sql:
+  - engine: postgresql
+    schema: pkg/store/migrations # golang-migrate files; sqlc skips the .down.sql ones
+    queries: pkg/store/queries.sql
+    gen:
+      go:
+        package: dbq
+        out: pkg/store/dbq
+        sql_package: pgx/v5
+        emit_empty_slices: true
+        overrides:
+          - db_type: timestamptz
+            go_type: time.Time
+          - db_type: timestamptz
+            nullable: true
+            go_type:
+              import: time
+              type: Time
+              pointer: true

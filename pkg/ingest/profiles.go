@@ -1,0 +1,99 @@
+package ingest
+
+import (
+	"context"
+	"log/slog"
+	"time"
+
+	"github.com/bluesky-social/indigo/atproto/atclient"
+	"github.com/bluesky-social/indigo/atproto/identity"
+	"github.com/bluesky-social/indigo/atproto/syntax"
+	"github.com/jazware/leadsheet.fm/pkg/metrics"
+	"github.com/jazware/leadsheet.fm/pkg/store"
+)
+
+const (
+	profileTTL   = 24 * time.Hour
+	profileBatch = 25 // app.bsky.actor.getProfiles max
+)
+
+// ProfileResolver fills in handles, display names and avatars for the
+// accounts behind indexed records. Display names and avatars come from
+// the account's Bluesky profile when it has one; the handle always comes
+// from (verified) identity resolution.
+type ProfileResolver struct {
+	logger *slog.Logger
+	store  *store.Store
+	dir    identity.Directory
+	bsky   *atclient.APIClient
+}
+
+func NewProfileResolver(logger *slog.Logger, st *store.Store, dir identity.Directory, bskyAppView string) *ProfileResolver {
+	return &ProfileResolver{
+		logger: logger.With("component", "profiles"),
+		store:  st,
+		dir:    dir,
+		bsky:   atclient.NewAPIClient(bskyAppView),
+	}
+}
+
+// Run resolves stale profiles until ctx is cancelled.
+func (r *ProfileResolver) Run(ctx context.Context) {
+	ticker := time.NewTicker(2 * time.Second)
+	defer ticker.Stop()
+	for {
+		dids, err := r.store.StaleProfiles(ctx, time.Now().Add(-profileTTL), profileBatch)
+		if err != nil && ctx.Err() == nil {
+			r.logger.Error("listing stale profiles", "error", err)
+		}
+		if len(dids) > 0 {
+			r.Resolve(ctx, dids...)
+		}
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+		}
+	}
+}
+
+// Resolve refreshes up to 25 accounts' profiles now.
+func (r *ProfileResolver) Resolve(ctx context.Context, dids ...string) {
+	var out struct {
+		Profiles []struct {
+			DID         string `json:"did"`
+			DisplayName string `json:"displayName"`
+			Avatar      string `json:"avatar"`
+		} `json:"profiles"`
+	}
+	if err := r.bsky.Get(ctx, "app.bsky.actor.getProfiles", map[string]any{"actors": dids}, &out); err != nil {
+		r.logger.Warn("fetching bluesky profiles", "error", err)
+	}
+	bsky := map[string]store.Author{}
+	for _, p := range out.Profiles {
+		bsky[p.DID] = store.Author{DisplayName: p.DisplayName, Avatar: p.Avatar}
+	}
+
+	for _, did := range dids {
+		a := bsky[did]
+		a.DID = did
+		if parsed, err := syntax.ParseDID(did); err == nil {
+			r.dir.Purge(ctx, parsed.AtIdentifier())
+			if ident, err := r.dir.LookupDID(ctx, parsed); err == nil && !ident.Handle.IsInvalidHandle() {
+				a.Handle = ident.Handle.String()
+			} else if err != nil {
+				r.logger.Debug("resolving identity", "did", did, "error", err)
+			}
+		}
+		if a.Handle != "" {
+			metrics.ProfilesResolved.WithLabelValues("ok").Inc()
+		} else {
+			metrics.ProfilesResolved.WithLabelValues("no_handle").Inc()
+		}
+		// Written even on failure so a broken identity isn't retried
+		// every tick; it's retried after profileTTL.
+		if err := r.store.UpsertProfile(ctx, a); err != nil {
+			r.logger.Error("saving profile", "did", did, "error", err)
+		}
+	}
+}

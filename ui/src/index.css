@@ -1,0 +1,123 @@
+@import '@fontsource-variable/nunito/wght.css';
+@import '@fontsource/jetbrains-mono/400.css';
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  /* Night (default). Chords are >= 10:1 on both bg and surface. */
+  :root {
+    --bg: 15 22 38;
+    --surface: 26 35 56;
+    --surface-raised: 36 47 72;
+    --rule: 42 53 82;
+    --ink: 244 241 234;
+    --ink-soft: 169 179 201;
+    --ink-faint: 111 122 148;
+    --chord: 255 200 87;
+    --glow: 139 211 255;
+    --glow-ink: 15 22 38;
+    color-scheme: dark;
+  }
+  /* Day, on the toggle. Chords are >= 5:1 on both bg and surface. */
+  :root[data-theme='day'] {
+    --bg: 246 248 252;
+    --surface: 230 235 245;
+    --surface-raised: 255 255 255;
+    --rule: 207 215 230;
+    --ink: 18 26 44;
+    --ink-soft: 74 86 112;
+    --ink-faint: 138 147 168;
+    --chord: 138 82 0;
+    --glow: 158 216 255;
+    --glow-ink: 18 26 44;
+    color-scheme: light;
+  }
+  body {
+    @apply bg-bg font-sans text-ink antialiased;
+  }
+  :focus-visible {
+    @apply outline-none ring-2 ring-chord ring-offset-2 ring-offset-bg;
+  }
+  ::selection {
+    @apply bg-glow text-glow-ink;
+  }
+  mark {
+    @apply rounded-md bg-glow px-0.5 text-glow-ink;
+  }
+}
+
+@layer components {
+  .btn {
+    @apply inline-flex min-h-[44px] min-w-[44px] items-center justify-center gap-1.5 rounded-full bg-surface px-4 text-[0.95rem] font-extrabold text-ink transition-colors hover:bg-surface-raised disabled:cursor-not-allowed disabled:opacity-50;
+  }
+  .btn-sm {
+    @apply min-h-[36px] min-w-[36px] px-3 text-sm;
+  }
+  .btn-primary {
+    @apply bg-ink text-bg hover:bg-ink/90;
+  }
+  .btn-accent {
+    @apply bg-chord text-bg hover:bg-chord/90;
+  }
+  .btn-on {
+    @apply bg-glow text-glow-ink hover:bg-glow/90;
+  }
+  .card {
+    @apply rounded-[20px] bg-surface;
+  }
+  .field {
+    @apply h-12 w-full rounded-2xl bg-surface px-4 text-base font-bold text-ink placeholder:font-semibold placeholder:text-ink-faint focus:outline-none focus-visible:ring-2 focus-visible:ring-chord focus-visible:ring-offset-0;
+  }
+  .label {
+    @apply mb-1.5 block text-[0.8rem] font-extrabold text-ink-soft;
+  }
+  .pill {
+    @apply inline-flex items-center gap-1 whitespace-nowrap rounded-full bg-surface px-3 py-1 text-[0.8rem] font-extrabold text-ink;
+  }
+}
+
+/* Tabs are columns of dashes; ligatures would merge them. */
+.font-mono {
+  font-variant-ligatures: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  * {
+    transition: none !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+@media print {
+  .no-print {
+    display: none !important;
+  }
+  :root {
+    --bg: 255 255 255;
+    --surface: 240 240 240;
+    --ink: 0 0 0;
+    --ink-soft: 60 60 60;
+    --chord: 0 0 0;
+  }
+}
+
+/* Stage mode: played lines fade, a dot marks the line you're on. */
+.stage [data-line] {
+  position: relative;
+  transition: opacity 0.25s;
+}
+.stage [data-past] {
+  opacity: 0.4;
+}
+.stage [data-current]::before {
+  content: '';
+  position: absolute;
+  left: -1.1rem;
+  bottom: 0.45em;
+  width: 0.5rem;
+  height: 0.5rem;
+  border-radius: 999px;
+  background: rgb(var(--glow));
+}
