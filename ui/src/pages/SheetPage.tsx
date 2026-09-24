@@ -20,7 +20,7 @@ import { fmtDate } from '@/lib/format'
 import { useTitle } from '@/hooks/useTitle'
 import { usePlayAlong, type PlayAlongState } from '@/listen/usePlayAlong'
 import { btcChord } from '@/listen/btc'
-import { SheetShapesProvider, sheetShapes } from '@/components/Voicings'
+import { ChordSoundContext, SheetShapesProvider, sheetShapes } from '@/components/Voicings'
 
 export function SheetPage() {
   const { actor = '', rkey = '' } = useParams()
@@ -116,6 +116,8 @@ function SheetScreen({ page, actor }: { page: SheetPageData; actor: string }) {
     () => (c.options.shift === 0 && own.size ? { shapes: own, scope: sheet.uri } : null),
     [c.options.shift, own, sheet.uri],
   )
+  // Clicking a chord box plays it as the reader would: their capo, the real tuning.
+  const sound = useMemo(() => ({ strings: tuning.strings, capo: c.capo }), [tuning, c.capo])
 
   const diagrams = guitar && c.chords.length > 0 && (
     <div className="-mx-5 flex gap-2 overflow-x-auto px-5 pb-1 lg:mx-0 lg:grid lg:grid-cols-3 lg:overflow-visible lg:px-0">
@@ -138,37 +140,39 @@ function SheetScreen({ page, actor }: { page: SheetPageData; actor: string }) {
 
   return (
     <SheetShapesProvider value={shapes}>
-      <article className="grid gap-x-12 gap-y-5 lg:grid-cols-[minmax(0,1fr)_17rem] lg:pt-2">
-        <div className="flex min-w-0 flex-col gap-5">
-          <TopBar page={page} actor={actor} />
-          <TitleBlock page={page} actor={actor} />
-          {sheet.description && (
-            <p className="card whitespace-pre-line px-4 py-3 font-semibold text-ink-soft">{sheet.description}</p>
-          )}
-          <div className="no-print lg:hidden">{diagrams}</div>
-          <div ref={sheetRef}>
-            <ChordTipContext.Provider value={guitar ? { strings: shapeStrings(tuning) } : null}>
-              <SheetView doc={c.doc} options={c.options} now={c.now} className="max-w-[40rem] pt-1" />
-            </ChordTipContext.Provider>
-          </div>
-          <Related page={page} />
-        </div>
-        <aside className="no-print hidden lg:block">
-          <div className="card sticky top-4 flex flex-col gap-5 p-5">
-            <Rail c={c} guitar={guitar} />
-            {diagrams && (
-              <div>
-                <div className="label">
-                  Shapes{!isStandardShapes(tuning) && <>, {tuning.name}</>}
-                </div>
-                {diagrams}
-              </div>
+      <ChordSoundContext.Provider value={guitar ? sound : null}>
+        <article className="grid gap-x-12 gap-y-5 lg:grid-cols-[minmax(0,1fr)_17rem] lg:pt-2">
+          <div className="flex min-w-0 flex-col gap-5">
+            <TopBar page={page} actor={actor} />
+            <TitleBlock page={page} actor={actor} />
+            {sheet.description && (
+              <p className="card whitespace-pre-line px-4 py-3 font-semibold text-ink-soft">{sheet.description}</p>
             )}
+            <div className="no-print lg:hidden">{diagrams}</div>
+            <div ref={sheetRef}>
+              <ChordTipContext.Provider value={guitar ? { strings: shapeStrings(tuning) } : null}>
+                <SheetView doc={c.doc} options={c.options} now={c.now} className="max-w-[40rem] pt-1" />
+              </ChordTipContext.Provider>
+            </div>
+            <Related page={page} />
           </div>
-        </aside>
-      </article>
-      <BottomBar c={c} guitar={guitar} />
-      {c.stage && <Stage page={page} c={c} />}
+          <aside className="no-print hidden lg:block">
+            <div className="card sticky top-4 flex flex-col gap-5 p-5">
+              <Rail c={c} guitar={guitar} />
+              {diagrams && (
+                <div>
+                  <div className="label">
+                    Shapes{!isStandardShapes(tuning) && <>, {tuning.name}</>}
+                  </div>
+                  {diagrams}
+                </div>
+              )}
+            </div>
+          </aside>
+        </article>
+        <BottomBar c={c} guitar={guitar} />
+        {c.stage && <Stage page={page} c={c} />}
+      </ChordSoundContext.Provider>
     </SheetShapesProvider>
   )
 }

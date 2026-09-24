@@ -69,6 +69,13 @@ export function sheetShapes(voicings: SheetVoicing[] | undefined): Map<string, F
   return out
 }
 
+/** In the editor: set (or with null, clear) the sheet's own shape for a chord. */
+export function useEditShape(): (key: string, frets: Frets | null) => void {
+  const edit = useContext(SheetShapesContext)?.edit
+  if (!edit) throw new Error('useEditShape outside an editing SheetShapesProvider')
+  return edit
+}
+
 export function SheetShapesProvider({ value, children }: { value: SheetShapes | null; children: ReactNode }) {
   return <SheetShapesContext.Provider value={value}>{children}</SheetShapesContext.Provider>
 }
@@ -109,3 +116,10 @@ export function useVoicing(chord: ChordLike | null, strings: number[]) {
   }
   return { shapes, index, voicing: shapes[index] as Voicing | undefined, step, own: !!own && index === 0 }
 }
+
+/**
+ * What the chord boxes sound like when clicked: the tuning's real open
+ * strings (half-step-down charts are drawn with standard shapes) and the
+ * capo the reader has on. Without it, boxes are silent.
+ */
+export const ChordSoundContext = createContext<{ strings: number[]; capo: number } | null>(null)

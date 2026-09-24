@@ -1,5 +1,8 @@
 import { ChevronLeft, ChevronRight } from 'lucide-react'
-import { useVoicing } from '@/components/Voicings'
+import { useContext, useEffect, useRef } from 'react'
+import { ChordSoundContext, useVoicing } from '@/components/Voicings'
+import { fretsKey } from '@/lib/guitar'
+import { audioStarted, strum } from '@/lib/pluck'
 import { noteName, pretty, type ChordSymbol } from '@/lib/music'
 import { STANDARD_STRINGS } from '@/lib/tunings'
 
@@ -31,7 +34,22 @@ export function ChordDiagram({
   strings?: number[]
   cycle?: boolean
 }) {
-  const { voicing: v, index, shapes, step, own } = useVoicing(chord, strings)
+  const { voicing: v, index, shapes, step: stepVoicing, own } = useVoicing(chord, strings)
+  const sound = useContext(ChordSoundContext)
+  const play = () => v && sound && strum(v.frets, sound.strings, sound.capo)
+  // Once the reader has heard a chord, stepping to another shape plays it,
+  // so shapes can be compared by ear.
+  const stepped = useRef(false)
+  const step = (d: number) => {
+    stepped.current = audioStarted()
+    stepVoicing(d)
+  }
+  const heard = v ? fretsKey(v.frets) : ''
+  useEffect(() => {
+    if (stepped.current) play()
+    stepped.current = false
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [heard])
   const standard = strings.every((s, i) => s === STANDARD_STRINGS[i])
   const fretted = v?.frets.filter((f): f is number => f !== null && f > 0) ?? []
   const maxFret = fretted.length ? Math.max(...fretted) : 0
@@ -40,55 +58,75 @@ export function ChordDiagram({
   const sx = (s: number) => PAD_X + s * GAP_X
   const fy = (f: number) => TOP + (f - base + 0.5) * GAP_Y
 
+  const box = v && (
+    <svg
+      viewBox={`0 0 ${W} ${H}`}
+      className="w-16 text-ink"
+      role="img"
+      aria-label={`${label}: ${v.frets.map((f) => (f === null ? 'x' : f)).join(' ')}`}
+    >
+      {base === 1 ? (
+        <rect x={PAD_X - 1} y={TOP - 3} width={W - PAD_X * 2 + 2} height={3} fill="currentColor" />
+      ) : (
+        <text x={1} y={TOP + GAP_Y * 0.7} fontSize={9} fill="currentColor" className="font-sans">
+          {base}
+        </text>
+      )}
+      {Array.from({ length: FRETS + 1 }, (_, i) => (
+        <line key={`f${i}`} x1={PAD_X} x2={W - PAD_X} y1={TOP + i * GAP_Y} y2={TOP + i * GAP_Y}
+          stroke="currentColor" strokeOpacity={0.35} strokeWidth={1} />
+      ))}
+      {Array.from({ length: STRINGS }, (_, s) => (
+        <line key={`s${s}`} x1={sx(s)} x2={sx(s)} y1={TOP} y2={TOP + FRETS * GAP_Y}
+          stroke="currentColor" strokeOpacity={0.55} strokeWidth={1} />
+      ))}
+      {v.barre && (
+        <rect
+          x={sx(v.barre.from) - 3.5}
+          y={fy(v.barre.fret) - 3.5}
+          width={sx(v.barre.to) - sx(v.barre.from) + 7}
+          height={7}
+          rx={3.5}
+          fill="currentColor"
+        />
+      )}
+      {v.frets.map((f, s) =>
+        f === null ? (
+          <text key={s} x={sx(s)} y={TOP - 6} fontSize={8} textAnchor="middle" fill="currentColor">
+            ×
+          </text>
+        ) : f === 0 ? (
+          <circle key={s} cx={sx(s)} cy={TOP - 8} r={2.6} fill="none" stroke="currentColor" strokeWidth={1} />
+        ) : v.barre && f === v.barre.fret && s >= v.barre.from && s <= v.barre.to ? null : (
+          <circle key={s} cx={sx(s)} cy={fy(f)} r={3.6} fill="currentColor" />
+        ),
+      )}
+    </svg>
+  )
+
   return (
     <figure className="flex w-[4.9rem] shrink-0 flex-col items-center rounded-2xl bg-surface px-1 pb-1.5 pt-2.5">
       <figcaption className="mb-1 text-base font-black leading-none text-chord">
         {pretty(label)}
       </figcaption>
       {v ? (
-        <svg
-          viewBox={`0 0 ${W} ${H}`}
-          className="w-16 text-ink"
-          role="img"
-          aria-label={`${label}: ${v.frets.map((f) => (f === null ? 'x' : f)).join(' ')}`}
-        >
-          {base === 1 ? (
-            <rect x={PAD_X - 1} y={TOP - 3} width={W - PAD_X * 2 + 2} height={3} fill="currentColor" />
-          ) : (
-            <text x={1} y={TOP + GAP_Y * 0.7} fontSize={9} fill="currentColor" className="font-sans">
-              {base}
-            </text>
-          )}
-          {Array.from({ length: FRETS + 1 }, (_, i) => (
-            <line key={`f${i}`} x1={PAD_X} x2={W - PAD_X} y1={TOP + i * GAP_Y} y2={TOP + i * GAP_Y}
-              stroke="currentColor" strokeOpacity={0.35} strokeWidth={1} />
-          ))}
-          {Array.from({ length: STRINGS }, (_, s) => (
-            <line key={`s${s}`} x1={sx(s)} x2={sx(s)} y1={TOP} y2={TOP + FRETS * GAP_Y}
-              stroke="currentColor" strokeOpacity={0.55} strokeWidth={1} />
-          ))}
-          {v.barre && (
-            <rect
-              x={sx(v.barre.from) - 3.5}
-              y={fy(v.barre.fret) - 3.5}
-              width={sx(v.barre.to) - sx(v.barre.from) + 7}
-              height={7}
-              rx={3.5}
-              fill="currentColor"
-            />
-          )}
-          {v.frets.map((f, s) =>
-            f === null ? (
-              <text key={s} x={sx(s)} y={TOP - 6} fontSize={8} textAnchor="middle" fill="currentColor">
-                ×
-              </text>
-            ) : f === 0 ? (
-              <circle key={s} cx={sx(s)} cy={TOP - 8} r={2.6} fill="none" stroke="currentColor" strokeWidth={1} />
-            ) : v.barre && f === v.barre.fret && s >= v.barre.from && s <= v.barre.to ? null : (
-              <circle key={s} cx={sx(s)} cy={fy(f)} r={3.6} fill="currentColor" />
-            ),
-          )}
-        </svg>
+        sound ? (
+          <button
+            type="button"
+            className="rounded-lg hover:bg-surface-raised focus-visible:ring-2 focus-visible:ring-chord"
+            onMouseDown={(e) => e.preventDefault()}
+            onClick={(e) => {
+              e.stopPropagation()
+              play()
+            }}
+            aria-label={`Hear ${label}`}
+            title="Hear it"
+          >
+            {box}
+          </button>
+        ) : (
+          box
+        )
       ) : (
         <div className="flex h-[5.5rem] w-16 items-center justify-center text-center text-[0.65rem] font-bold leading-tight text-ink-soft">
           no shape for this one yet

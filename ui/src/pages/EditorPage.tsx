@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { clsx } from 'clsx'
-import { Trash2 } from 'lucide-react'
+import { ChevronDown, Trash2 } from 'lucide-react'
 import { api, profilePath, sheetPath, type Sheet, type SheetInput } from '@/lib/api'
 import { chordsIn, parseChordPro, type Doc } from '@/lib/chordpro'
 import { chordsOverLyricsToChordPro, looksLikeChordsOverLyrics } from '@/lib/convert'
@@ -10,12 +10,13 @@ import { importDraftKey, importToSheet, looksLikeUGMarkup, readImport, ugToChord
 import { forgetSheet } from '@/lib/recent'
 import { TUNINGS, getTuning, shapeStrings } from '@/lib/tunings'
 import { useViewer } from '@/hooks/queries'
+import { usePref } from '@/hooks/usePref'
 import { useLogin } from '@/components/login'
 import { SheetView } from '@/components/SheetView'
 import { ChordTipContext } from '@/components/ChordTip'
 import { handleText } from '@/components/Author'
 import { ChordDiagram } from '@/components/ChordDiagram'
-import { chordKey, pickKey, readPicks, sheetShapes, SheetShapesProvider, useVoicing } from '@/components/Voicings'
+import { ChordSoundContext, chordKey, pickKey, readPicks, sheetShapes, SheetShapesProvider, useEditShape, useVoicing } from '@/components/Voicings'
 import { fretsText, parseFrets, toRecordFrets, type Frets } from '@/lib/guitar'
 import { parseChord, symbolText, type ChordSymbol } from '@/lib/music'
 import type { SheetVoicing } from '@/lib/api'
@@ -440,19 +441,19 @@ function Editor({
         </div>
 
         <div className={clsx('min-w-0', tab !== 'preview' && 'hidden lg:block')}>
-          <div className="label">Preview{!form.content && ' of the example'}</div>
-          <div className={clsx('rounded-[20px] border-2 border-surface p-5', !form.content && 'opacity-60')}>
-            <SheetShapesProvider value={shapes}>
-              <ChordTipContext.Provider value={guitar ? { strings } : null}>
-                <SheetView doc={doc} options={{ shift: 0, flats: false, simplify: false, fontSize: 18 }} />
-              </ChordTipContext.Provider>
-            </SheetShapesProvider>
-          </div>
-          {guitar && form.content.trim() && (
-            <SheetShapesProvider value={shapes}>
-              <ShapesEditor doc={doc} strings={strings} edit={shapes.edit} />
-            </SheetShapesProvider>
-          )}
+          <SheetShapesProvider value={shapes}>
+            <ChordSoundContext.Provider value={guitar ? { strings: getTuning(form.tuning).strings, capo: form.capo } : null}>
+              {guitar && form.content.trim() && (
+                <ShapesEditor doc={doc} strings={strings} count={liveVoicings(form.voicings, doc).length} />
+              )}
+              <div className="label">Preview{!form.content && ' of the example'}</div>
+              <div className={clsx('rounded-[20px] border-2 border-surface p-5', !form.content && 'opacity-60')}>
+                <ChordTipContext.Provider value={guitar ? { strings } : null}>
+                  <SheetView doc={doc} options={{ shift: 0, flats: false, simplify: false, fontSize: 18 }} />
+                </ChordTipContext.Provider>
+              </div>
+            </ChordSoundContext.Provider>
+          </SheetShapesProvider>
         </div>
       </div>
 
@@ -538,36 +539,48 @@ function withPicks(input: SheetInput, uri: string): SheetInput {
  * we know, or type any shape ("x32010", "8 10 10 9 8 8"). Chosen shapes
  * are saved with the sheet.
  */
-function ShapesEditor({
-  doc,
-  strings,
-  edit,
-}: {
-  doc: Doc
-  strings: number[]
-  edit: (key: string, frets: Frets | null) => void
-}) {
+function ShapesEditor({ doc, strings, count }: { doc: Doc; strings: number[]; count: number }) {
+  const [open, setOpen] = usePref('editorShapesOpen', false)
   const chords = chordsIn(doc)
   if (!chords.length) return null
   return (
-    <div className="mt-5">
-      <div className="label">Shapes</div>
-      <p className="mb-3 text-sm font-semibold text-ink-soft">
-        How you play each chord. Step through the arrows or type frets, lowest string first (x = not played). A marked
-        shape is saved with the sheet.
-      </p>
-      <div className="flex flex-wrap gap-3">
-        {chords.map((c) => (
-          <ShapeField key={chordKey(c)} chord={c} strings={strings} edit={edit} />
-        ))}
-      </div>
-    </div>
+    <section className="mb-5 rounded-[20px] bg-surface">
+      <button
+        type="button"
+        className="flex w-full items-center justify-between gap-3 px-4 py-3 text-left"
+        aria-expanded={open}
+        aria-controls="editor-shapes"
+        onClick={() => setOpen(!open)}
+      >
+        <span>
+          <span className="font-black">Chord shapes</span>
+          <span className="ml-2 text-sm font-semibold text-ink-soft">
+            {count ? `${count} of ${chords.length} set by you` : `${chords.length} chords`}
+          </span>
+        </span>
+        <ChevronDown className={clsx('h-5 w-5 shrink-0 transition-transform', open && 'rotate-180')} aria-hidden />
+      </button>
+      {open && (
+        <div id="editor-shapes" className="px-4 pb-4">
+          <p className="mb-3 text-sm font-semibold text-ink-soft">
+            How you play each chord, saved with the sheet. Step through the arrows or type frets, lowest string first
+            (x = not played). A dot marks a shape you've set. Click a box to hear it.
+          </p>
+          <div className="flex flex-wrap gap-3">
+            {chords.map((c) => (
+              <ShapeField key={chordKey(c)} chord={c} strings={strings} />
+            ))}
+          </div>
+        </div>
+      )}
+    </section>
   )
 }
 
-function ShapeField({ chord, strings, edit }: { chord: ChordSymbol; strings: number[]; edit: (key: string, frets: Frets | null) => void }) {
+function ShapeField({ chord, strings }: { chord: ChordSymbol; strings: number[] }) {
   const label = written(chord)
   const { voicing, own } = useVoicing(chord, strings)
+  const edit = useEditShape()
   const current = voicing ? fretsText(voicing.frets) : ''
   const [text, setText] = useState<string | null>(null)
   const bad = text !== null && text.trim() !== '' && !parseFrets(text, strings.length)

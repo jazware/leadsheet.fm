@@ -53,6 +53,11 @@ picked on it. Readers see the author's shape first (marked with a dot)
 while the chords are shown as written, and can still pick another for
 themselves.
 
+Clicking a chord box strums it (`ui/src/lib/pluck.ts`): Karplus-Strong
+plucked strings in Web Audio, in tune to a few cents, at the sheet's real
+tuning plus the reader's capo. Once something has played, stepping to
+another shape plays that one too, to compare them by ear.
+
 ## Play along
 
 The microphone button on a sheet (rail, bottom bar and stage mode) listens
