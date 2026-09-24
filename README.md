@@ -36,6 +36,23 @@ and difficulty, credits the transcriber in the notes, and keeps it as a
 draft until the user publishes. Pasting UG markup or chords-over-lyrics
 text into the editor converts too. `just ui-test` covers the conversion.
 
+## Chord shapes
+
+Hovering (or tapping) a chord shows its box; the arrows under it, or ←/→
+while the chord name has focus, step through up to eight voicings: the
+hand-checked shapes first, then the best of a fretboard search
+(`shapesFor` in `ui/src/lib/guitar.ts`). A reader's pick is remembered in
+their browser and shared by the tooltip and the Shapes panel.
+
+Authors can save shapes with the sheet: the record's optional `voicings`
+(`[{"chord": "C", "frets": [-1, 3, 2, 0, 1, 0]}]`, frets per string,
+lowest first, in the sheet's tuning relative to its capo, -1 = not
+played). The editor's Shapes section steps through shapes or takes typed
+frets, and forking or editing a sheet carries over the shapes the reader
+picked on it. Readers see the author's shape first (marked with a dot)
+while the chords are shown as written, and can still pick another for
+themselves.
+
 ## Play along
 
 The microphone button on a sheet (rail, bottom bar and stage mode) listens

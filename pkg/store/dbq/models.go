@@ -89,6 +89,7 @@ type Sheet struct {
 	Names        pgtype.Text
 	NamesCompact pgtype.Text
 	Search       interface{}
+	Voicings     []byte
 }
 
 type SheetStat struct {

@@ -30,6 +30,7 @@ type sheetInput struct {
 	Difficulty  string             `json:"difficulty"`
 	Description string             `json:"description"`
 	Tags        []string           `json:"tags"`
+	Voicings    []records.Voicing  `json:"voicings"`
 	ForkOf      *records.StrongRef `json:"forkOf"`
 }
 
@@ -59,6 +60,14 @@ func (in *sheetInput) record(createdAt string) *records.Sheet {
 	for _, t := range in.Tags {
 		if t = strings.ToLower(strings.TrimSpace(t)); t != "" {
 			rec.Tags = append(rec.Tags, t)
+		}
+	}
+	// One shape per chord (the first wins), only for chords that are named.
+	seen := map[string]bool{}
+	for _, v := range in.Voicings {
+		if v.Chord = strings.TrimSpace(v.Chord); v.Chord != "" && len(v.Frets) > 0 && !seen[v.Chord] {
+			seen[v.Chord] = true
+			rec.Voicings = append(rec.Voicings, v)
 		}
 	}
 	return rec

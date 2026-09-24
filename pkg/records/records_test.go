@@ -20,6 +20,31 @@ func TestValidateSheet(t *testing.T) {
 		t.Fatalf("valid sheet rejected: %v", err)
 	}
 
+	withShapes := good
+	withShapes.Voicings = []Voicing{{Chord: "Em7", Frets: []int64{0, 2, 2, 0, 3, 3}}, {Chord: "G", Frets: []int64{3, 2, 0, 0, -1, 3}}}
+	if err := Validate(NSIDSheet, withShapes); err != nil {
+		t.Fatalf("sheet with voicings rejected: %v", err)
+	}
+	for _, frets := range [][]int64{{}, {0, 2, 2, 0, 25, 3}, {-2, 2, 2, 0, 3, 3}} {
+		withShapes.Voicings = []Voicing{{Chord: "Em7", Frets: frets}}
+		if err := Validate(NSIDSheet, withShapes); err == nil {
+			t.Fatalf("voicing %v accepted", frets)
+		}
+	}
+	// A raw record from Jetstream decodes its voicings.
+	raw := map[string]any{
+		"$type": NSIDSheet, "title": "Song", "artist": "Artist", "content": "[C]la",
+		"createdAt": "2026-09-24T12:00:00.000Z",
+		"voicings":  []any{map[string]any{"chord": "C", "frets": []any{float64(-1), float64(3), float64(2), float64(0), float64(1), float64(0)}}},
+	}
+	var s Sheet
+	if err := Decode(NSIDSheet, raw, &s); err != nil {
+		t.Fatalf("decoding sheet with voicings: %v", err)
+	}
+	if len(s.Voicings) != 1 || s.Voicings[0].Chord != "C" || s.Voicings[0].Frets[0] != -1 {
+		t.Fatalf("voicings = %+v", s.Voicings)
+	}
+
 	bad := good
 	tooHigh := int64(20)
 	bad.Capo = &tooHigh
@@ -28,7 +53,7 @@ func TestValidateSheet(t *testing.T) {
 	}
 
 	// Raw maps as they arrive from Jetstream (numbers as float64).
-	raw := map[string]any{
+	raw = map[string]any{
 		"$type":     NSIDRating,
 		"subject":   map[string]any{"uri": "at://did:plc:abc/fm.leadsheet.sheet/3kabc", "cid": "bafyreicvah4f5bmfcaao4z6f77g3yznj3dxrxbnw6olduc6ienkj3wbjhi"},
 		"value":     float64(4),

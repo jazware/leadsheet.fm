@@ -4,7 +4,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { clsx } from 'clsx'
 import { Trash2 } from 'lucide-react'
 import { api, profilePath, sheetPath, type Sheet, type SheetInput } from '@/lib/api'
-import { parseChordPro } from '@/lib/chordpro'
+import { chordsIn, parseChordPro, type Doc } from '@/lib/chordpro'
 import { chordsOverLyricsToChordPro, looksLikeChordsOverLyrics } from '@/lib/convert'
 import { importDraftKey, importToSheet, looksLikeUGMarkup, readImport, ugToChordPro, type UGImport } from '@/lib/ultimateGuitar'
 import { forgetSheet } from '@/lib/recent'
@@ -14,6 +14,11 @@ import { useLogin } from '@/components/login'
 import { SheetView } from '@/components/SheetView'
 import { ChordTipContext } from '@/components/ChordTip'
 import { handleText } from '@/components/Author'
+import { ChordDiagram } from '@/components/ChordDiagram'
+import { chordKey, pickKey, readPicks, sheetShapes, SheetShapesProvider, useVoicing } from '@/components/Voicings'
+import { fretsText, parseFrets, toRecordFrets, type Frets } from '@/lib/guitar'
+import { parseChord, symbolText, type ChordSymbol } from '@/lib/music'
+import type { SheetVoicing } from '@/lib/api'
 
 const EMPTY: SheetInput = {
   title: '',
@@ -27,6 +32,7 @@ const EMPTY: SheetInput = {
   difficulty: '',
   description: '',
   tags: [],
+  voicings: [],
 }
 
 const EXAMPLE = `[Verse 1]
@@ -57,6 +63,7 @@ function fromSheet(s: Sheet): SheetInput {
     difficulty: s.difficulty,
     description: s.description,
     tags: s.tags,
+    voicings: s.voicings ?? [],
   }
 }
 
@@ -118,15 +125,17 @@ function Editor({
   // the version it started from and is dropped once the sheet has changed
   // since, so a stale draft can't overwrite a newer edit.
   const base = mode === 'edit' ? source!.cid : null
-  const initial = () => (source ? fromSheet(source) : imported ? importToSheet(imported) : EMPTY)
+  // Forking or editing carries over the shapes the reader picked while
+  // looking at the sheet.
+  const initial = () => (source ? withPicks(fromSheet(source), source.uri) : imported ? importToSheet(imported) : EMPTY)
   const [form, setForm] = useState<SheetInput>(() => {
     try {
       const raw = localStorage.getItem(draftKey)
       const saved = raw ? JSON.parse(raw) : null
       if (saved && typeof saved === 'object' && 'form' in saved) {
-        if (saved.base === base) return saved.form
+        if (saved.base === base) return { ...saved.form, voicings: saved.form.voicings ?? [] }
       } else if (saved && base === null) {
-        return saved // a draft saved before drafts recorded their base
+        return { ...saved, voicings: saved.voicings ?? [] } // a draft saved before drafts recorded their base
       }
     } catch {
       // ignore unreadable drafts
@@ -150,6 +159,27 @@ function Editor({
 
   const set = <K extends keyof SheetInput>(k: K, v: SheetInput[K]) => setForm((f) => ({ ...f, [k]: v }))
   const doc = useMemo(() => parseChordPro(form.content || EXAMPLE), [form.content])
+  const guitar = form.kind === 'chords' || form.kind === 'tab'
+  const strings = shapeStrings(getTuning(form.tuning))
+  // Stepping through a chord's shapes in the editor (preview tooltips or
+  // the Shapes list) sets the sheet's own shape for it.
+  const shapes = useMemo(
+    () => ({
+      shapes: sheetShapes(form.voicings),
+      scope: 'editor',
+      edit: (key: string, frets: Frets | null) =>
+        setForm((f) => {
+          const rest = f.voicings.filter((v) => {
+            const sym = parseChord(v.chord)
+            return !sym || chordKey(sym) !== key
+          })
+          const chord = chordsIn(parseChordPro(f.content)).find((c) => chordKey(c) === key)
+          if (!frets || !chord) return { ...f, voicings: rest }
+          return { ...f, voicings: [...rest, { chord: written(chord), frets: toRecordFrets(frets) }] }
+        }),
+    }),
+    [form.voicings],
+  )
   const mine = mode !== 'edit' || viewer?.did === source?.did
   const ready = form.title.trim() && form.artist.trim() && form.content.trim()
 
@@ -163,6 +193,7 @@ function Editor({
     const input: SheetInput = {
       ...form,
       tags: tagText.split(',').map((t) => t.trim()).filter(Boolean),
+      voicings: guitar ? liveVoicings(form.voicings, doc) : [],
       forkOf: mode === 'fork' ? { uri: source!.uri, cid: source!.cid } : undefined,
     }
     try {
@@ -411,12 +442,17 @@ function Editor({
         <div className={clsx('min-w-0', tab !== 'preview' && 'hidden lg:block')}>
           <div className="label">Preview{!form.content && ' of the example'}</div>
           <div className={clsx('rounded-[20px] border-2 border-surface p-5', !form.content && 'opacity-60')}>
-            <ChordTipContext.Provider
-              value={form.kind === 'chords' || form.kind === 'tab' ? { strings: shapeStrings(getTuning(form.tuning)) } : null}
-            >
-              <SheetView doc={doc} options={{ shift: 0, flats: false, simplify: false, fontSize: 18 }} />
-            </ChordTipContext.Provider>
+            <SheetShapesProvider value={shapes}>
+              <ChordTipContext.Provider value={guitar ? { strings } : null}>
+                <SheetView doc={doc} options={{ shift: 0, flats: false, simplify: false, fontSize: 18 }} />
+              </ChordTipContext.Provider>
+            </SheetShapesProvider>
           </div>
+          {guitar && form.content.trim() && (
+            <SheetShapesProvider value={shapes}>
+              <ShapesEditor doc={doc} strings={strings} edit={shapes.edit} />
+            </SheetShapesProvider>
+          )}
         </div>
       </div>
 
@@ -452,6 +488,107 @@ function Editor({
         </span>
         {error && <p className="basis-full text-sm font-bold text-chord">{error}</p>}
       </div>
+    </div>
+  )
+}
+
+/** A chord as the sheet writes it, for a voicing's `chord`. */
+function written(c: ChordSymbol): string {
+  return symbolText(c, c.flat)
+}
+
+/** Only the voicings for chords still in the sheet, one each. */
+function liveVoicings(voicings: SheetVoicing[], doc: Doc): SheetVoicing[] {
+  const own = sheetShapes(voicings)
+  return chordsIn(doc).flatMap((c) => {
+    const frets = own.get(chordKey(c))
+    if (!frets) return []
+    own.delete(chordKey(c))
+    return [{ chord: written(c), frets: toRecordFrets(frets) }]
+  })
+}
+
+/**
+ * The sheet's voicings plus the shapes this browser picked for its chords
+ * (for the sheet's own chords, only picks made on that sheet).
+ */
+function withPicks(input: SheetInput, uri: string): SheetInput {
+  if (input.kind !== 'chords' && input.kind !== 'tab') return input
+  const picks = readPicks()
+  const strings = shapeStrings(getTuning(input.tuning))
+  const own = sheetShapes(input.voicings)
+  const voicings = [...input.voicings]
+  for (const c of chordsIn(parseChordPro(input.content))) {
+    const key = chordKey(c)
+    const pick = picks[pickKey(strings, c, own.has(key) ? uri : undefined)]
+    if (!pick) continue
+    const frets = toRecordFrets(pick.split(',').map((f) => (f === 'x' ? null : Number(f))))
+    const at = voicings.findIndex((v) => {
+      const sym = parseChord(v.chord)
+      return sym && chordKey(sym) === key
+    })
+    if (at >= 0) voicings[at] = { ...voicings[at], frets }
+    else voicings.push({ chord: written(c), frets })
+  }
+  return { ...input, voicings }
+}
+
+/**
+ * Every chord in the sheet with its shape: arrows step through the ones
+ * we know, or type any shape ("x32010", "8 10 10 9 8 8"). Chosen shapes
+ * are saved with the sheet.
+ */
+function ShapesEditor({
+  doc,
+  strings,
+  edit,
+}: {
+  doc: Doc
+  strings: number[]
+  edit: (key: string, frets: Frets | null) => void
+}) {
+  const chords = chordsIn(doc)
+  if (!chords.length) return null
+  return (
+    <div className="mt-5">
+      <div className="label">Shapes</div>
+      <p className="mb-3 text-sm font-semibold text-ink-soft">
+        How you play each chord. Step through the arrows or type frets, lowest string first (x = not played). A marked
+        shape is saved with the sheet.
+      </p>
+      <div className="flex flex-wrap gap-3">
+        {chords.map((c) => (
+          <ShapeField key={chordKey(c)} chord={c} strings={strings} edit={edit} />
+        ))}
+      </div>
+    </div>
+  )
+}
+
+function ShapeField({ chord, strings, edit }: { chord: ChordSymbol; strings: number[]; edit: (key: string, frets: Frets | null) => void }) {
+  const label = written(chord)
+  const { voicing, own } = useVoicing(chord, strings)
+  const current = voicing ? fretsText(voicing.frets) : ''
+  const [text, setText] = useState<string | null>(null)
+  const bad = text !== null && text.trim() !== '' && !parseFrets(text, strings.length)
+  return (
+    <div className="flex w-[4.9rem] flex-col gap-1.5">
+      <ChordDiagram chord={chord} label={label} flats={chord.flat} strings={strings} cycle />
+      <input
+        className={clsx('field h-8 px-2 text-center font-mono text-xs', bad && 'ring-2 ring-chord')}
+        aria-label={`${label} frets`}
+        aria-invalid={bad || undefined}
+        placeholder={current || 'x32010'}
+        value={text ?? (own ? current : '')}
+        onFocus={() => setText(own ? current : '')}
+        onChange={(e) => {
+          setText(e.target.value)
+          const frets = parseFrets(e.target.value, strings.length)
+          if (frets) edit(chordKey(chord), frets)
+          else if (!e.target.value.trim()) edit(chordKey(chord), null)
+        }}
+        onBlur={() => setText(null)}
+      />
     </div>
   )
 }

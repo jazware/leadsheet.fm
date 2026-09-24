@@ -20,6 +20,7 @@ import { fmtDate } from '@/lib/format'
 import { useTitle } from '@/hooks/useTitle'
 import { usePlayAlong, type PlayAlongState } from '@/listen/usePlayAlong'
 import { btcChord } from '@/listen/btc'
+import { SheetShapesProvider, sheetShapes } from '@/components/Voicings'
 
 export function SheetPage() {
   const { actor = '', rkey = '' } = useParams()
@@ -108,6 +109,13 @@ function SheetScreen({ page, actor }: { page: SheetPageData; actor: string }) {
   useWakeLock(c.scrolling || c.stage || c.play.active)
   const sheetRef = useRef<HTMLDivElement>(null)
   useFollowScroll(c.now, sheetRef, null, !c.stage)
+  // The author's own chord shapes, while the chords are shown as written
+  // (moved, they'd be different shapes).
+  const own = useMemo(() => sheetShapes(sheet.voicings), [sheet.voicings])
+  const shapes = useMemo(
+    () => (c.options.shift === 0 && own.size ? { shapes: own, scope: sheet.uri } : null),
+    [c.options.shift, own, sheet.uri],
+  )
 
   const diagrams = guitar && c.chords.length > 0 && (
     <div className="-mx-5 flex gap-2 overflow-x-auto px-5 pb-1 lg:mx-0 lg:grid lg:grid-cols-3 lg:overflow-visible lg:px-0">
@@ -129,7 +137,7 @@ function SheetScreen({ page, actor }: { page: SheetPageData; actor: string }) {
   )
 
   return (
-    <>
+    <SheetShapesProvider value={shapes}>
       <article className="grid gap-x-12 gap-y-5 lg:grid-cols-[minmax(0,1fr)_17rem] lg:pt-2">
         <div className="flex min-w-0 flex-col gap-5">
           <TopBar page={page} actor={actor} />
@@ -161,7 +169,7 @@ function SheetScreen({ page, actor }: { page: SheetPageData; actor: string }) {
       </article>
       <BottomBar c={c} guitar={guitar} />
       {c.stage && <Stage page={page} c={c} />}
-    </>
+    </SheetShapesProvider>
   )
 }
 

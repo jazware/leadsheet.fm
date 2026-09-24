@@ -41,9 +41,18 @@ type Sheet struct {
 	Difficulty  string     `json:"difficulty,omitempty"`
 	Description string     `json:"description,omitempty"`
 	Tags        []string   `json:"tags,omitempty"`
+	Voicings    []Voicing  `json:"voicings,omitempty"`
 	ForkOf      *StrongRef `json:"forkOf,omitempty"`
 	CreatedAt   string     `json:"createdAt"`
 	UpdatedAt   string     `json:"updatedAt,omitempty"`
+}
+
+// Voicing is how the author plays one chord: a fret per string, lowest
+// string first, in the sheet's tuning relative to its capo (-1 = not
+// played, 0 = open).
+type Voicing struct {
+	Chord string  `json:"chord"`
+	Frets []int64 `json:"frets"`
 }
 
 type Rating struct {

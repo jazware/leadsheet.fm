@@ -43,7 +43,7 @@ export function ChordTip({
     root: mod12(chord.root + shift),
     quality: simplify && chord.quality ? simplifyQuality(chord.quality) : chord.quality,
   }
-  const { step } = useVoicing(shown.quality ? { root: shown.root, quality: shown.quality } : null, ctx?.strings ?? STANDARD_STRINGS)
+  const { step } = useVoicing(shown, ctx?.strings ?? STANDARD_STRINGS)
 
   // A tap elsewhere closes a tapped-open tip.
   useEffect(() => {

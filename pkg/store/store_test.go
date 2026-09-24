@@ -38,6 +38,18 @@ func TestSheetsRatingsForks(t *testing.T) {
 
 	must(st.UpsertSheet(ctx, "did:plc:b", "3", "cid3", sheet("Champagne Supernova", "Oasis", "[A]How many special people", "2026-01-03T00:00:00Z")))
 
+	// Voicings round-trip; sheets without any read back as [].
+	shaped := sheet("Shaped", "Oasis", "[C]la", "2026-01-03T00:00:00Z")
+	shaped.Voicings = []records.Voicing{{Chord: "C", Frets: []int64{-1, 3, 2, 0, 1, 3}}}
+	must(st.UpsertSheet(ctx, "did:plc:b", "9", "cid9", shaped))
+	if got, err := st.GetSheet(ctx, SheetURI("did:plc:b", "9")); err != nil || string(got.Voicings) != `[{"chord": "C", "frets": [-1, 3, 2, 0, 1, 3]}]` {
+		t.Fatalf("voicings = %s, %v", got.Voicings, err)
+	}
+	if got, err := st.GetSheet(ctx, SheetURI("did:plc:b", "3")); err != nil || string(got.Voicings) != `[]` {
+		t.Fatalf("no voicings = %s, %v", got.Voicings, err)
+	}
+	must(st.DeleteSheet(ctx, SheetURI("did:plc:b", "9")))
+
 	// Same song despite the "(Acoustic)" and "The".
 	song, err := st.GetSong(ctx, "oasis", "wonderwall")
 	must(err)

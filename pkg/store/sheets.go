@@ -2,6 +2,7 @@ package store
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"strings"
@@ -61,6 +62,8 @@ type Sheet struct {
 	SheetSummary
 	Content     string `json:"content"`
 	Description string `json:"description"`
+	// The record's voicings, as stored: [{"chord", "frets"}, ...].
+	Voicings json.RawMessage `json:"voicings"`
 }
 
 func summary(r dbq.SheetSummary) SheetSummary {
@@ -129,6 +132,14 @@ func (s *Store) UpsertSheet(ctx context.Context, did, rkey, cid string, rec *rec
 	if p.Tags == nil {
 		p.Tags = []string{}
 	}
+	voicings := rec.Voicings
+	if voicings == nil {
+		voicings = []records.Voicing{}
+	}
+	var err error
+	if p.Voicings, err = json.Marshal(voicings); err != nil {
+		return err
+	}
 	p.TagsText = strings.Join(p.Tags, " ")
 	if p.Kind == "" {
 		p.Kind = "chords"
@@ -183,7 +194,7 @@ func (s *Store) GetSheet(ctx context.Context, uri string) (*Sheet, error) {
 	if err != nil {
 		return nil, noRows(err)
 	}
-	return &Sheet{SheetSummary: summary(r.SheetSummary), Content: r.Content, Description: r.Description}, nil
+	return &Sheet{SheetSummary: summary(r.SheetSummary), Content: r.Content, Description: r.Description, Voicings: r.Voicings}, nil
 }
 
 // GetSheetSummary is GetSheet without the content.

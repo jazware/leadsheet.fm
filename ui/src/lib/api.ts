@@ -45,6 +45,16 @@ export interface SheetSummary {
 export interface Sheet extends SheetSummary {
   content: string
   description: string
+  voicings: SheetVoicing[]
+}
+
+/**
+ * How the author plays one chord: a fret per string, lowest first, in the
+ * sheet's tuning relative to its capo (-1 = not played, 0 = open).
+ */
+export interface SheetVoicing {
+  chord: string
+  frets: number[]
 }
 
 export interface SongVersion extends SheetSummary {
@@ -109,6 +119,7 @@ export interface SheetInput {
   difficulty: string
   description: string
   tags: string[]
+  voicings: SheetVoicing[]
   forkOf?: { uri: string; cid: string }
 }
 

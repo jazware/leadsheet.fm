@@ -8,16 +8,17 @@ SELECT fork_of_uri FROM sheets WHERE uri = $1;
 -- name: UpsertSheet :exec
 INSERT INTO sheets (uri, did, rkey, cid, title, artist, album, artist_slug, title_slug,
     kind, key, capo, tuning, difficulty, description, tags, tags_text, content, lyrics,
-    fork_of_uri, fork_of_cid, created_at, updated_at)
+    voicings, fork_of_uri, fork_of_cid, created_at, updated_at)
 VALUES (@uri, @did, @rkey, @cid, @title, @artist, @album, @artist_slug, @title_slug,
     @kind, @key, @capo, @tuning, @difficulty, @description, @tags, @tags_text, @content, @lyrics,
-    @fork_of_uri, @fork_of_cid, @created_at, @updated_at)
+    @voicings, @fork_of_uri, @fork_of_cid, @created_at, @updated_at)
 ON CONFLICT (uri) DO UPDATE SET
     cid = excluded.cid, title = excluded.title, artist = excluded.artist, album = excluded.album,
     artist_slug = excluded.artist_slug, title_slug = excluded.title_slug, kind = excluded.kind,
     key = excluded.key, capo = excluded.capo, tuning = excluded.tuning,
     difficulty = excluded.difficulty, description = excluded.description, tags = excluded.tags,
     tags_text = excluded.tags_text, content = excluded.content, lyrics = excluded.lyrics,
+    voicings = excluded.voicings,
     fork_of_uri = excluded.fork_of_uri, fork_of_cid = excluded.fork_of_cid,
     created_at = excluded.created_at, updated_at = excluded.updated_at, indexed_at = now();
 
@@ -25,7 +26,7 @@ ON CONFLICT (uri) DO UPDATE SET
 DELETE FROM sheets WHERE uri = $1 RETURNING fork_of_uri;
 
 -- name: GetSheet :one
-SELECT sqlc.embed(ss), s.content, s.description
+SELECT sqlc.embed(ss), s.content, s.description, s.voicings
 FROM sheet_summaries ss JOIN sheets s ON s.uri = ss.uri
 WHERE ss.uri = $1;
 

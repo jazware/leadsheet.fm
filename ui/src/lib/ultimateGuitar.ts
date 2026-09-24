@@ -137,5 +137,6 @@ export function importToSheet(p: UGImport): SheetInput {
     difficulty: DIFFICULTY[p.difficulty.trim().toLowerCase()] ?? '',
     description: credit,
     tags: [],
+    voicings: [],
   }
 }

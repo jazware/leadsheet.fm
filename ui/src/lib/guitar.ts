@@ -204,6 +204,52 @@ function sensible(v: Voicing): boolean {
   return v.frets.every((f, i) => f !== 0 || i === first)
 }
 
+/** A shape from bare frets (a sheet's own voicing): works out the barre. */
+export function voicingFromFrets(frets: Frets): Voicing {
+  const fretted = frets.flatMap((f, s) => (f !== null && f > 0 ? [s] : []))
+  const values = fretted.map((s) => frets[s]!)
+  let barre: Voicing['barre']
+  if (fretted.length > 4) {
+    const min = Math.min(...values)
+    const atMin = fretted.filter((s) => frets[s] === min)
+    const last = frets.reduce<number>((l, f, s) => (f !== null ? s : l), -1)
+    const from = atMin[0]
+    if (atMin.length >= 2 && frets.slice(from, last + 1).every((f) => f !== 0)) barre = { fret: min, from, to: last }
+  }
+  const max = values.length ? Math.max(...values) : 0
+  return { frets: [...frets], barre, open: !barre && max <= 4 }
+}
+
+/** Frets as a stable key, "x,3,2,0,1,0". */
+export const fretsKey = (f: Frets) => f.map((x) => (x === null ? 'x' : x)).join(',')
+
+/** Frets as players write them: "x32010", or spaced once past fret 9. */
+export function fretsText(f: Frets): string {
+  return f.map((x) => (x === null ? 'x' : String(x))).join(f.some((x) => x !== null && x > 9) ? ' ' : '')
+}
+
+/**
+ * Parses "x32010", "x 3 2 0 1 0" or "8,10,10,9,8,8" for an instrument
+ * with `strings` strings; null if it isn't that.
+ */
+export function parseFrets(text: string, strings: number): Frets | null {
+  const t = text.trim().toLowerCase()
+  if (!t) return null
+  const parts = /[\s,]/.test(t) ? t.split(/[\s,]+/) : [...t]
+  if (parts.length !== strings) return null
+  const out: Frets = []
+  for (const p of parts) {
+    if (p === 'x' || p === '-1') out.push(null)
+    else if (/^\d{1,2}$/.test(p) && Number(p) <= 24) out.push(Number(p))
+    else return null
+  }
+  return out.every((f) => f === null) ? null : out
+}
+
+/** Record frets (-1 = not played) to Frets, and back. */
+export const fromRecordFrets = (f: number[]): Frets => f.map((x) => (x < 0 ? null : x))
+export const toRecordFrets = (f: Frets): number[] => f.map((x) => (x === null ? -1 : x))
+
 function lowestFret(v: Voicing): number {
   const fretted = v.frets.filter((f): f is number => f !== null && f > 0)
   return fretted.length ? Math.min(...fretted) : 0

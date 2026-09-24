@@ -31,10 +31,7 @@ export function ChordDiagram({
   strings?: number[]
   cycle?: boolean
 }) {
-  const { voicing: v, index, shapes, step } = useVoicing(
-    chord.quality ? { root: chord.root, quality: chord.quality } : null,
-    strings,
-  )
+  const { voicing: v, index, shapes, step, own } = useVoicing(chord, strings)
   const standard = strings.every((s, i) => s === STANDARD_STRINGS[i])
   const fretted = v?.frets.filter((f): f is number => f !== null && f > 0) ?? []
   const maxFret = fretted.length ? Math.max(...fretted) : 0
@@ -122,12 +119,14 @@ export function ChordDiagram({
           >
             <ChevronLeft className="h-4 w-4" aria-hidden />
           </button>
-          <span className="text-[0.65rem] font-extrabold tabular-nums" aria-live="polite">
+          <span className="flex items-center gap-1 text-[0.65rem] font-extrabold tabular-nums" aria-live="polite">
+            {own && <span className="h-1.5 w-1.5 rounded-full bg-chord" title="The sheet's shape" aria-hidden />}
             <span className="sr-only">Voicing </span>
             {index + 1}
             <span aria-hidden>/</span>
             <span className="sr-only"> of </span>
             {shapes.length}
+            {own && <span className="sr-only">, the sheet's shape</span>}
           </span>
           <button
             type="button"

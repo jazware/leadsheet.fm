@@ -109,6 +109,15 @@
               "maxGraphemes": 64
             }
           },
+          "voicings": {
+            "type": "array",
+            "maxLength": 100,
+            "items": {
+              "type": "ref",
+              "ref": "#voicing"
+            },
+            "description": "Chord shapes the author chose, at most one per chord. Readers see these instead of the shapes the app would pick."
+          },
           "forkOf": {
             "type": "ref",
             "ref": "com.atproto.repo.strongRef",
@@ -122,6 +131,32 @@
             "type": "string",
             "format": "datetime"
           }
+        }
+      }
+    },
+    "voicing": {
+      "type": "object",
+      "description": "How to play one chord of the sheet.",
+      "required": [
+        "chord",
+        "frets"
+      ],
+      "properties": {
+        "chord": {
+          "type": "string",
+          "maxLength": 64,
+          "description": "The chord as written in `content`, e.g. 'C' or 'F#m7'."
+        },
+        "frets": {
+          "type": "array",
+          "minLength": 1,
+          "maxLength": 12,
+          "items": {
+            "type": "integer",
+            "minimum": -1,
+            "maximum": 24
+          },
+          "description": "Fret for each string, lowest-pitched first, in the sheet's tuning and relative to its capo: -1 = not played, 0 = open."
         }
       }
     }
