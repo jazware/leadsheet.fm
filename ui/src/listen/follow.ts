@@ -2,8 +2,11 @@
  * Follows a player through a sheet's chords from per-frame BTC
  * probabilities: an online HMM whose states are the chords in the order
  * they're written. Each frame the player stays on a chord, moves to the
- * next, skips one, or (rarely) jumps anywhere, for repeats and starting
- * mid-song.
+ * next or skips one. Longer moves only go to the start of a section: back
+ * (a repeated chorus, the top) or on to one of the next two, with
+ * anything further down far less likely. Moving the marker a long way
+ * takes a couple of seconds of clear evidence, so a stretch of
+ * ambiguous strumming can't throw it far down the page.
  *
  * The same chord written twice in a row ("[C] ... [C]") sounds like one
  * long chord, so each run of repeats is a single state, and the marker
@@ -37,8 +40,30 @@ export interface Position {
 
 const P_ADVANCE = 0.06
 const P_SKIP = 0.006
-const P_JUMP = 0.0015
-const FLOOR = 0.03 // emission floor, so one odd frame can't wipe out a path
+// Jumps need well over a second of clear evidence (each frame of a
+// better-fitting chord is worth ~1.25 nats against JUNK) to win.
+const P_SECTION = 1e-6 // back to a section start (a repeat), or on to one of the next two
+const P_FAR = 1e-14 // on to a section start further down the page (~3 s of clear evidence)
+const P_LOST = 1e-16 // anywhere at all: a last resort (section jumps do the recovering)
+/**
+ * Every chord lasts at least this many frames (~0.37 s): each run is a
+ * chain of MIN_FRAMES states the belief must walk through. Without it,
+ * during a messy second (everything scoring JUNK) belief would creep down
+ * the page a chord per frame and snowball wherever the audio then fits.
+ */
+const MIN_FRAMES = 4
+/** A move of more than this many runs counts as a jump for the marker. */
+const NEAR = 3
+/**
+ * Frames (~1.1 s) a far position must lead before the marker jumps there.
+ * On top of the jump penalties above, a real jump shows up ~2-3 s after the
+ * player takes it; a misheard second never does.
+ */
+const JUMP_FRAMES = 12
+// No position scores below this: a strum BTC misreads, a muted chord or a
+// passing melody note is "junk" wherever the player is, not evidence for
+// some other place in the song.
+const JUNK = 0.2
 const SILENT = 0.5 // P(no chord) above which the clock stops
 
 /** How well each BTC class fits a written chord (0..1). */
@@ -68,9 +93,11 @@ interface Run {
 
 export class Follower {
   private readonly runs: Run[]
+  /** Runs where a section starts. */
+  private readonly sectionRuns: number[]
   /** templates[offset][kind] */
   private readonly templates: Float32Array[][]
-  /** belief[offset * runs + r], sums to 1. */
+  /** belief[((offset * runs) + r) * MIN_FRAMES + frame-in-chord], sums to 1. */
   private belief: Float64Array
   private shown = 0
   private pending = -1
@@ -83,6 +110,8 @@ export class Follower {
   constructor(
     sequence: SheetChord[],
     prior: { offset: number; weight: number }[],
+    /** Sheet indices where sections start (the first is always one). */
+    sections: number[] = [],
   ) {
     const keys = new Map<string, number>()
     const kinds: SheetChord[] = []
@@ -98,8 +127,12 @@ export class Follower {
       if (last && last.kind === kind) last.length++
       else this.runs.push({ start: i, length: 1, kind })
     })
+    const starts = new Set([0, ...sections])
+    this.sectionRuns = this.runs.flatMap((run, r) =>
+      [...starts].some((i) => i >= run.start && i < run.start + run.length) ? [r] : [],
+    )
     this.templates = Array.from({ length: 12 }, (_, o) => kinds.map((k) => template(mod12(k.root + o), k.quality)))
-    this.belief = new Float64Array(12 * this.runs.length)
+    this.belief = new Float64Array(12 * this.runs.length * MIN_FRAMES)
     this.reset(prior)
   }
 
@@ -111,9 +144,13 @@ export class Follower {
     const total = offsets.reduce((a, b) => a + b, 0)
     for (let o = 0; o < 12; o++) {
       for (let r = 0; r < n; r++) {
-        // Most likely the first chord; anywhere else is possible.
-        const pos = n === 1 ? 1 : r === 0 ? 0.6 : 0.4 / (n - 1)
-        this.belief[o * n + r] = (offsets[o] / total) * pos
+        // From the top. Starting mid-song is a section jump a few seconds
+        // in; a starting guess spread over the song leaves faint copies
+        // deep in it that coast along and take over when the audio
+        // happens to match them, pulling the marker down the page.
+        const pos = r === 0 ? 1 : 0
+        // Already past the minimum: they may be partway into the chord.
+        this.belief[(o * n + r) * MIN_FRAMES + MIN_FRAMES - 1] = (offsets[o] / total) * pos
       }
     }
     this.shown = 0
@@ -127,29 +164,59 @@ export class Follower {
     let heard = 0
     for (let c = 1; c < N_CHORDS; c++) if (probs[c] > probs[heard]) heard = c
     const silent = probs[NO_CHORD] > SILENT
+    const K = MIN_FRAMES
     if (!silent && n > 0) {
-      const next = new Float64Array(12 * n)
+      const b = this.belief
+      const next = new Float64Array(b.length)
+      const sectionStart = new Uint8Array(n)
+      for (const r of this.sectionRuns) sectionStart[r] = 1
+      // Run r's start is always a jump target; sectionRuns is sorted.
+      const leak = P_SECTION + P_LOST
+      const sr = this.sectionRuns
       let total = 0
       for (let o = 0; o < 12; o++) {
         const base = o * n
-        let mass = 0
-        for (let r = 0; r < n; r++) mass += this.belief[base + r]
+        // below[r]: belief in runs before r, for the jump sources by distance.
+        const below = new Float64Array(n + 1)
+        for (let r = 0; r < n; r++) {
+          let m = 0
+          for (let j = 0; j < K; j++) m += b[(base + r) * K + j]
+          below[r + 1] = below[r] + m
+        }
+        const mass = below[n]
         // Emissions for this transposition's distinct chords.
         const fit = this.templates[o].map((t) => {
           let s = 0
           for (let c = 0; c < N_CHORDS; c++) if (t[c]) s += t[c] * probs[c]
-          return s + FLOOR
+          return Math.max(s, JUNK)
         })
-        const b = this.belief
+        // Leaving run k's last state for the next run (longer runs are left less often).
+        const last = (k: number) => b[(base + k) * K + K - 1]
+        const exit = (k: number) => P_ADVANCE / this.runs[k].length
         for (let r = 0; r < n; r++) {
-          // Longer runs are left less often.
-          const adv = (k: number) => (P_ADVANCE / this.runs[k].length) * b[base + k]
-          let p = (1 - (P_ADVANCE / this.runs[r].length) - P_SKIP - P_JUMP) * b[base + r] + (P_JUMP * mass) / n
-          if (r >= 1) p += adv(r - 1)
-          if (r >= 2) p += P_SKIP * b[base + r - 2]
-          p *= fit[this.runs[r].kind]
-          next[base + r] = p
-          total += p
+          const at = (base + r) * K
+          const e = fit[this.runs[r].kind]
+          // Entering the run.
+          let enter = (P_LOST * mass) / n
+          if (sectionStart[r]) {
+            // From runs whose next or next-but-one section this is, and
+            // from everything after it (repeats): the usual rate. From
+            // further up the page: P_FAR.
+            const si = sr.indexOf(r)
+            const near = si >= 2 ? sr[si - 2] : 0
+            enter += (P_SECTION * (mass - below[near]) + P_FAR * below[near]) / sr.length
+          }
+          if (r >= 1) enter += exit(r - 1) * last(r - 1)
+          if (r >= 2) enter += P_SKIP * last(r - 2)
+          const into = [enter]
+          // Walking through the minimum length...
+          for (let j = 1; j < K; j++) into.push(b[at + j - 1] * (1 - leak))
+          // ...then staying as long as it takes.
+          into[K - 1] += last(r) * (1 - exit(r) - P_SKIP - leak)
+          for (let j = 0; j < K; j++) {
+            next[at + j] = into[j] * e
+            total += next[at + j]
+          }
         }
       }
       for (let j = 0; j < next.length; j++) next[j] /= total
@@ -161,8 +228,11 @@ export class Follower {
     const byOffset = new Float64Array(12)
     for (let o = 0; o < 12; o++) {
       for (let r = 0; r < n; r++) {
-        marginal[r] += this.belief[o * n + r]
-        byOffset[o] += this.belief[o * n + r]
+        for (let j = 0; j < K; j++) {
+          const v = this.belief[(o * n + r) * K + j]
+          marginal[r] += v
+          byOffset[o] += v
+        }
       }
     }
     let best = 0
@@ -171,15 +241,20 @@ export class Follower {
     for (let o = 1; o < 12; o++) if (byOffset[o] > byOffset[offset]) offset = o
 
     if (!silent) this.inRun++
-    // Hysteresis: move the marker once a new run has led for two frames,
-    // or at once when it's confident.
+    // Hysteresis: a nearby move once the new run has led for two frames
+    // (or at once when it's confident); a far one only after it has led
+    // for a couple of seconds and is more likely than not.
     if (best !== this.shown) {
       if (best === this.pending) this.pendingFrames++
       else {
         this.pending = best
         this.pendingFrames = 1
       }
-      if (this.pendingFrames >= 2 || marginal[best] > 0.6) {
+      const far = Math.abs(best - this.shown) > NEAR
+      const move = far
+        ? this.pendingFrames >= JUMP_FRAMES && marginal[best] > 0.5
+        : this.pendingFrames >= 2 || marginal[best] > 0.6
+      if (move) {
         // Learn the pace from runs played through in order.
         if (best === this.shown + 1 && this.inRun > 3) {
           const perChord = this.inRun / this.runs[this.shown].length

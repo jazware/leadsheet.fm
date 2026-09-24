@@ -50,7 +50,12 @@ runs in the browser, and no audio leaves the device (`ui/src/listen/`):
   and 14 MB runtime are fingerprinted assets, cached for good after the
   first use.
 - `follow.ts` is an online HMM over the sheet's chords in order: stay,
-  advance, skip one, or rarely jump anywhere (repeats, starting mid-song).
+  advance or skip one, each chord lasting at least ~0.4 s. Longer moves only
+  go to a section start: back (repeats) or one of the next two, with
+  anything further down far less likely. Misheard audio scores as "junk"
+  rather than as evidence for somewhere else, and the marker only makes a
+  far move once it has clearly led for ~1 s. It never leaps down the page
+  on a messy second, and a real jump shows up a few seconds in.
   It runs all twelve transpositions at once, starting from what the page
   implies (shapes under the capo, or the chords as written), so a sheet
   written either way, or played in another key, still lines up. Repeated

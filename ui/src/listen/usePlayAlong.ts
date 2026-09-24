@@ -94,7 +94,7 @@ export function usePlayAlong(doc: Doc, prior: { offset: number; weight: number }
         setState({ status: 'listening', now: sheet.segments[m.index] ?? null, heard: m.heard, silent: m.silent, offset: m.offset })
       }
     }
-    w.postMessage({ type: 'start', chords: sheet.chords, prior: priorRef.current } satisfies ToWorker)
+    w.postMessage({ type: 'start', chords: sheet.chords, sections: sheet.sections, prior: priorRef.current } satisfies ToWorker)
 
     await ctx.audioWorklet.addModule(captureUrl)
     if (id !== run.current) {

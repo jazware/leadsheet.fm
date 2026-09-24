@@ -14,7 +14,7 @@ ort.env.wasm.wasmPaths = { wasm: wasmUrl }
 ort.env.wasm.numThreads = 1
 
 export type ToWorker =
-  | { type: 'start'; chords: SheetChord[]; prior: { offset: number; weight: number }[] }
+  | { type: 'start'; chords: SheetChord[]; sections: number[]; prior: { offset: number; weight: number }[] }
   | { type: 'audio'; samples: Float32Array }
   | { type: 'stop' }
 
@@ -63,7 +63,7 @@ self.onmessage = async (e: MessageEvent<ToWorker>) => {
         model = null
         throw err
       })
-      const follower = new Follower(m.chords, m.prior)
+      const follower = new Follower(m.chords, m.prior, m.sections)
       live = new LiveChords(btc, (f) => {
         const p = follower.step(f.probs)
         post({ type: 'position', index: p.index, offset: p.offset, heard: p.heard, silent: p.silent, delay: f.delay })
