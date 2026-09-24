@@ -7,6 +7,12 @@ import path from 'path'
 export default defineConfig({
   plugins: [react()],
   base: '/',
+  build: {
+    // The play-along audio worklet must load from a real URL (Safari
+    // won't take a data: URL), so never inline it.
+    assetsInlineLimit: (file) => (file.endsWith('.worklet.js') ? false : undefined),
+  },
+  worker: { format: 'es' },
   server: {
     host: '127.0.0.1',
     port: 3004,

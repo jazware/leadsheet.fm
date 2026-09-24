@@ -36,6 +36,29 @@ and difficulty, credits the transcriber in the notes, and keeps it as a
 draft until the user publishes. Pasting UG markup or chords-over-lyrics
 text into the editor converts too. `just ui-test` covers the conversion.
 
+## Play along
+
+The microphone button on a sheet (rail, bottom bar and stage mode) listens
+while you play, lights up the chord you're on and keeps it in view. It all
+runs in the browser, and no audio leaves the device (`ui/src/listen/`):
+
+- A Web Worker computes constant-Q frames as audio arrives (`cqt.ts`, the
+  features chordex's analyzer feeds BTC) and reruns
+  [BTC](https://github.com/jayg996/BTC-ISMIR19) (MIT, `model/LICENSE-BTC`)
+  over the newest 10 s every ~0.28 s with onnxruntime-web on
+  single-threaded WASM. No cross-origin isolation is needed. The 13 MB model
+  and 14 MB runtime are fingerprinted assets, cached for good after the
+  first use.
+- `follow.ts` is an online HMM over the sheet's chords in order: stay,
+  advance, skip one, or rarely jump anywhere (repeats, starting mid-song).
+  It runs all twelve transpositions at once, starting from what the page
+  implies (shapes under the capo, or the chords as written), so a sheet
+  written either way, or played in another key, still lines up. Repeated
+  chords move by the player's pace, and silence stops the clock.
+- The model was exported, and the features checked against librosa, in
+  `packages/chordex/ondevice` (mono repo). `just ui-test` runs the follower
+  and an end-to-end test on synthesized audio.
+
 ## Database
 
 Postgres, via pgx. The schema is golang-migrate files in

@@ -42,6 +42,12 @@ func (h *spaHandler) handle(c echo.Context) error {
 	if reqPath != "" && reqPath != "index.html" {
 		if f, err := h.distFS.Open(reqPath); err == nil {
 			f.Close()
+			// Vite fingerprints everything under assets/, so a URL there never
+			// changes content. That matters for play-along's ~27 MB chord model
+			// and runtime, which would otherwise download on every visit.
+			if strings.HasPrefix(reqPath, "assets/") {
+				c.Response().Header().Set("Cache-Control", "public, max-age=31536000, immutable")
+			}
 			h.fileServer.ServeHTTP(c.Response(), c.Request())
 			return nil
 		}

@@ -1,5 +1,5 @@
 import { clsx } from 'clsx'
-import type { Block, Doc, Line } from '@/lib/chordpro'
+import type { Block, Doc, Line, Segment } from '@/lib/chordpro'
 import { pretty, symbolText, transposeSymbol, type ChordSymbol } from '@/lib/music'
 import { ChordTip } from '@/components/ChordTip'
 
@@ -27,19 +27,30 @@ const BLOCK_LABEL: Record<Block['kind'], string | null> = {
 
 /**
  * A rendered ChordPro document: chords set above the syllable they fall
- * on. Every lyric line carries data-line so stage mode can track it.
+ * on. Every lyric line carries data-line so stage mode can track it, and
+ * the chord being played along to (`now`) carries data-now.
  */
-export function SheetView({ doc, options, className }: { doc: Doc; options: ViewOptions; className?: string }) {
+export function SheetView({
+  doc,
+  options,
+  now,
+  className,
+}: {
+  doc: Doc
+  options: ViewOptions
+  now?: Segment | null
+  className?: string
+}) {
   return (
     <div className={clsx('font-semibold', className)} style={{ fontSize: options.fontSize }}>
       {doc.blocks.map((b, i) => (
-        <BlockView key={i} block={b} options={options} />
+        <BlockView key={i} block={b} options={options} now={now} />
       ))}
     </div>
   )
 }
 
-function BlockView({ block, options }: { block: Block; options: ViewOptions }) {
+function BlockView({ block, options, now }: { block: Block; options: ViewOptions; now?: Segment | null }) {
   const label = block.label ?? BLOCK_LABEL[block.kind]
   const panel = block.kind === 'chorus'
   return (
@@ -54,7 +65,7 @@ function BlockView({ block, options }: { block: Block; options: ViewOptions }) {
       ) : (
         <div className="leading-tight">
           {block.lines.map((l, i) => (
-            <LineView key={i} line={l} options={options} />
+            <LineView key={i} line={l} options={options} now={now} />
           ))}
         </div>
       )}
@@ -64,7 +75,7 @@ function BlockView({ block, options }: { block: Block; options: ViewOptions }) {
 
 const chordCls = 'whitespace-nowrap text-[0.9em] font-black leading-none text-chord'
 
-function LineView({ line, options }: { line: Line; options: ViewOptions }) {
+function LineView({ line, options, now }: { line: Line; options: ViewOptions; now?: Segment | null }) {
   if (line.type === 'blank') return <div className="h-[0.9em]" />
   if (line.type === 'comment') {
     return <p className="my-1.5 text-[0.8em] font-bold italic text-ink-soft">{line.text}</p>
@@ -84,7 +95,13 @@ function LineView({ line, options }: { line: Line; options: ViewOptions }) {
     // A chord-only line (intro, turnaround): chords spaced out in a row.
     return (
       <div data-line className={clsx('my-1 flex flex-wrap gap-x-[1.2em] gap-y-1', chordCls)}>
-        {line.segments.map((s, i) => (s.chordText !== null ? <span key={i}>{tip(s)}</span> : null))}
+        {line.segments.map((s, i) =>
+          s.chordText !== null ? (
+            <span key={i} data-now={s === now || undefined}>
+              {tip(s)}
+            </span>
+          ) : null,
+        )}
       </div>
     )
   }
@@ -102,7 +119,9 @@ function LineView({ line, options }: { line: Line; options: ViewOptions }) {
           <span key={i} className={clsx('relative inline-block whitespace-pre', row)}>
             {l !== null && (
               <>
-                <span className={clsx('absolute left-0 top-0', chordCls)}>{tip(s)}</span>
+                <span data-now={s === now || undefined} className={clsx('absolute left-0 top-0', chordCls)}>
+                  {tip(s)}
+                </span>
                 {/* Keeps room for the chord when the syllable under it is shorter. */}
                 <span aria-hidden className={clsx('invisible block h-0 overflow-hidden pr-[0.45em]', chordCls)}>
                   {l}

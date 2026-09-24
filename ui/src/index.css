@@ -121,3 +121,22 @@
   border-radius: 999px;
   background: rgb(var(--glow));
 }
+
+/* Play-along: the chord being played, lit up. Background and a spread
+   shadow rather than padding, so nothing around it moves. */
+[data-now] {
+  z-index: 1;
+  border-radius: 0.3em;
+  background: rgb(var(--chord));
+  box-shadow: 0 0 0 0.2em rgb(var(--chord));
+  color: rgb(var(--bg));
+  transition: background-color 0.15s, box-shadow 0.15s;
+}
+[data-now] * {
+  color: inherit;
+}
+@media (prefers-reduced-motion: reduce) {
+  [data-now] {
+    transition: none;
+  }
+}

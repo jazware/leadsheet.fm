@@ -1,10 +1,10 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import { clsx } from 'clsx'
-import { ArrowLeft, Bookmark, GitFork, Maximize2, Minus, Pause, Pencil, Play, Plus, Printer, Type, X } from 'lucide-react'
+import { ArrowLeft, Bookmark, GitFork, Maximize2, Mic, MicOff, Minus, Pause, Pencil, Play, Plus, Printer, Type, X } from 'lucide-react'
 import { KIND_LABEL, sheetPath, type SheetPage as SheetPageData } from '@/lib/api'
-import { chordsIn, parseChordPro } from '@/lib/chordpro'
-import { keyText, keyUsesFlats, mod12, parseKey, pretty, simplifyQuality } from '@/lib/music'
+import { chordsIn, parseChordPro, type Segment } from '@/lib/chordpro'
+import { keyText, keyUsesFlats, mod12, noteName, parseKey, pretty, simplifyQuality, type Quality } from '@/lib/music'
 import { getTuning, isStandardShapes, shapeStrings } from '@/lib/tunings'
 import { rememberSheet } from '@/lib/recent'
 import { useSheet, useSheetActions, useViewer } from '@/hooks/queries'
@@ -18,6 +18,8 @@ import { AuthorLink, handleText } from '@/components/Author'
 import { SheetList } from '@/components/SheetList'
 import { fmtDate } from '@/lib/format'
 import { useTitle } from '@/hooks/useTitle'
+import { usePlayAlong, type PlayAlongState } from '@/listen/usePlayAlong'
+import { btcChord } from '@/listen/btc'
 
 export function SheetPage() {
   const { actor = '', rkey = '' } = useParams()
@@ -58,12 +60,35 @@ function useSheetControls(page: SheetPageData) {
       : accidentals === 'flats'
   const options: ViewOptions = { shift, flats, simplify, fontSize }
 
+  // Play-along expects the chords to sound where the page says (shapes
+  // under the sheet's capo, plus any transpose), or failing that as
+  // written; it works out anything else from the audio.
+  const prior = useMemo(
+    () => [
+      { offset: sheet.capo + transpose, weight: 1 },
+      { offset: transpose, weight: 0.4 },
+    ],
+    [sheet.capo, transpose],
+  )
+  const play = usePlayAlong(doc, prior)
+  const now = play.state.status === 'listening' ? play.state.now : null
+
   return {
     doc, chords, options, flats,
     transpose, setTranspose, capo, setCapo, simplify, setSimplify,
     toggleAccidentals: () => setAccidentals(flats ? 'sharps' : 'flats'),
     fontSize, setFontSize, speed, setSpeed, scrolling, setScrolling, stage, setStage,
     soundingKey, shapeKey,
+    play, now,
+    togglePlayAlong: () => {
+      if (play.active) return play.stop()
+      setScrolling(false)
+      void play.start()
+    },
+    toggleScrolling: () => {
+      if (!scrolling) play.stop()
+      setScrolling(!scrolling)
+    },
     // -5..+6 semitones, wrapping around.
     stepTranspose: (d: number) => setTranspose((t) => ((t + d + 17) % 12) - 5),
     stepCapo: (d: number) => setCapo((c) => Math.max(0, Math.min(12, c + d))),
@@ -80,7 +105,9 @@ function SheetScreen({ page, actor }: { page: SheetPageData; actor: string }) {
 
   useEffect(() => rememberSheet(sheet), [sheet])
   useAutoScroll(c.scrolling && !c.stage, c.speed, null, () => c.setScrolling(false))
-  useWakeLock(c.scrolling || c.stage)
+  useWakeLock(c.scrolling || c.stage || c.play.active)
+  const sheetRef = useRef<HTMLDivElement>(null)
+  useFollowScroll(c.now, sheetRef, null, !c.stage)
 
   const diagrams = guitar && c.chords.length > 0 && (
     <div className="-mx-5 flex gap-2 overflow-x-auto px-5 pb-1 lg:mx-0 lg:grid lg:grid-cols-3 lg:overflow-visible lg:px-0">
@@ -110,9 +137,11 @@ function SheetScreen({ page, actor }: { page: SheetPageData; actor: string }) {
             <p className="card whitespace-pre-line px-4 py-3 font-semibold text-ink-soft">{sheet.description}</p>
           )}
           <div className="no-print lg:hidden">{diagrams}</div>
-          <ChordTipContext.Provider value={guitar ? { strings: shapeStrings(tuning) } : null}>
-            <SheetView doc={c.doc} options={c.options} className="max-w-[40rem] pt-1" />
-          </ChordTipContext.Provider>
+          <div ref={sheetRef}>
+            <ChordTipContext.Provider value={guitar ? { strings: shapeStrings(tuning) } : null}>
+              <SheetView doc={c.doc} options={c.options} now={c.now} className="max-w-[40rem] pt-1" />
+            </ChordTipContext.Provider>
+          </div>
           <Related page={page} />
         </div>
         <aside className="no-print hidden lg:block">
@@ -341,6 +370,15 @@ function Rail({ c, guitar }: { c: Controls; guitar: boolean }) {
           <SpeedSlider c={c} />
         </div>
       </div>
+      <div>
+        <div className="label">Play along</div>
+        <div className="flex items-center gap-3">
+          <ListenButton c={c} size="md" />
+          <span className="text-sm font-semibold leading-snug text-ink-soft">
+            {c.play.state.status === 'off' ? 'Play and the sheet keeps up with you.' : <PlayAlongStatus c={c} />}
+          </span>
+        </div>
+      </div>
       <button type="button" className="btn btn-primary" onClick={() => c.setStage(true)}>
         <Maximize2 className="h-4 w-4" aria-hidden />
         Stage mode
@@ -356,12 +394,75 @@ function PlayButton({ c, size }: { c: Controls; size: 'md' | 'lg' | 'xl' }) {
     <button
       type="button"
       className={clsx('btn btn-accent shrink-0 px-0', box)}
-      onClick={() => c.setScrolling(!c.scrolling)}
+      onClick={c.toggleScrolling}
       aria-label={c.scrolling ? 'Pause autoscroll' : 'Start autoscroll'}
     >
       {c.scrolling ? <Pause className={clsx(ico, 'fill-current')} aria-hidden /> : <Play className={clsx(ico, 'fill-current')} aria-hidden />}
     </button>
   )
+}
+
+/** Starts and stops play-along. */
+function ListenButton({ c, size, className }: { c: Controls; size: 'md' | 'lg' | 'xl'; className?: string }) {
+  const box = { md: 'h-12 w-12', lg: 'h-12 w-11', xl: 'h-14 w-14' }[size]
+  const ico = { md: 'h-5 w-5', lg: 'h-5 w-5', xl: 'h-6 w-6' }[size]
+  const on = c.play.active
+  return (
+    <button
+      type="button"
+      className={clsx('btn shrink-0 px-0', box, on ? 'btn-on' : className)}
+      onClick={c.togglePlayAlong}
+      aria-pressed={on}
+      aria-label={on ? 'Stop playing along' : 'Play along: follow my playing'}
+      title={on ? 'Stop playing along' : 'Play along: the sheet follows your playing. Listens on this device only.'}
+    >
+      {on ? <MicOff className={ico} aria-hidden /> : <Mic className={ico} aria-hidden />}
+    </button>
+  )
+}
+
+const HEARD_SUFFIX: Record<Quality, string> = {
+  maj: '', min: 'm', dim: 'dim', aug: 'aug', min6: 'm6', maj6: '6', min7: 'm7', minmaj7: 'm(maj7)',
+  maj7: 'maj7', '7': '7', dim7: 'dim7', hdim7: 'm7b5', sus2: 'sus2', sus4: 'sus4',
+  '5': '5', add9: 'add9', '9': '9', min9: 'm9', maj9: 'maj9', '7sus4': '7sus4',
+}
+
+/** One line on what play-along is doing. */
+function PlayAlongStatus({ c }: { c: Controls }) {
+  const s: PlayAlongState = c.play.state
+  if (s.status === 'loading') {
+    return <>Getting the listener ready{s.fraction > 0 && s.fraction < 1 ? ` (${Math.round(s.fraction * 100)}%)` : '…'}</>
+  }
+  if (s.status === 'error') return <>{s.message}</>
+  if (s.status !== 'listening') return null
+  if (s.silent || s.heard === null) return <>Listening. Start playing whenever you're ready.</>
+  const h = btcChord(s.heard)!
+  // Name it as the page would: undo the offset the audio showed, apply the page's shift.
+  const shown = noteName(h.root - s.offset + c.options.shift, c.flats) + HEARD_SUFFIX[h.quality]
+  return (
+    <>
+      Hearing <span className="font-black text-chord">{pretty(shown)}</span>
+    </>
+  )
+}
+
+/** Keeps the chord being played along to in view, a third of the way down. */
+function useFollowScroll(
+  now: Segment | null,
+  root: React.RefObject<HTMLElement>,
+  scroller: React.RefObject<HTMLElement> | null,
+  enabled: boolean,
+) {
+  useEffect(() => {
+    if (!enabled || !now) return
+    const el = root.current?.querySelector('[data-now]')
+    if (!el) return
+    const box = scroller?.current?.getBoundingClientRect() ?? { top: 0, height: window.innerHeight }
+    const y = el.getBoundingClientRect().top - box.top
+    if (y > box.height * 0.18 && y < box.height * 0.6) return
+    const behavior = window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth'
+    ;(scroller?.current ?? window).scrollBy({ top: y - box.height * 0.33, behavior })
+  }, [now, root, scroller, enabled])
 }
 
 function ChordToggles({ c }: { c: Controls }) {
@@ -444,11 +545,11 @@ function BottomBar({ c, guitar }: { c: Controls; guitar: boolean }) {
     <div className="flex flex-col items-center">
       <span className="text-[0.65rem] font-extrabold text-ink-soft">{label}</span>
       <div className="flex items-center">
-        <button type="button" className="flex h-10 w-9 items-center justify-center" onClick={() => onStep(-1)} aria-label={`${label} down`}>
+        <button type="button" className="flex h-10 w-8 items-center justify-center" onClick={() => onStep(-1)} aria-label={`${label} down`}>
           <Minus className="h-4 w-4" aria-hidden />
         </button>
-        <span className="min-w-[1.75rem] text-center text-lg font-black">{value}</span>
-        <button type="button" className="flex h-10 w-9 items-center justify-center" onClick={() => onStep(1)} aria-label={`${label} up`}>
+        <span className="min-w-[1.5rem] text-center text-lg font-black">{value}</span>
+        <button type="button" className="flex h-10 w-8 items-center justify-center" onClick={() => onStep(1)} aria-label={`${label} up`}>
           <Plus className="h-4 w-4" aria-hidden />
         </button>
       </div>
@@ -456,6 +557,18 @@ function BottomBar({ c, guitar }: { c: Controls; guitar: boolean }) {
   )
   return (
     <div className="no-print fixed inset-x-3 bottom-[max(0.75rem,env(safe-area-inset-bottom))] z-30 mx-auto max-w-md lg:hidden">
+      {c.play.state.status !== 'off' && !more && (
+        <div className="mb-2 flex items-center justify-between gap-3 rounded-[20px] border border-rule bg-surface px-4 py-2.5 text-sm font-bold shadow-float" role="status">
+          <span>
+            <PlayAlongStatus c={c} />
+          </span>
+          {c.play.state.status === 'error' && (
+            <button type="button" className="shrink-0 underline" onClick={c.play.stop}>
+              Dismiss
+            </button>
+          )}
+        </div>
+      )}
       {more && (
         <div className="mb-2 flex flex-col gap-4 rounded-[24px] border border-rule bg-surface p-4 shadow-float">
           <Stepper
@@ -481,13 +594,14 @@ function BottomBar({ c, guitar }: { c: Controls; guitar: boolean }) {
           </button>
         </div>
       )}
-      <div className="flex items-center justify-between rounded-[28px] border border-rule bg-surface px-2 py-1.5 shadow-float">
+      <div className="flex items-center justify-between rounded-[28px] border border-rule bg-surface px-1.5 py-1.5 shadow-float">
         {mini('Key', keyValue(c), c.stepTranspose)}
         {guitar ? mini('Capo', String(c.capo), c.stepCapo) : <span className="w-24" />}
         <PlayButton c={c} size="lg" />
+        <ListenButton c={c} size="lg" className="bg-transparent" />
         <button
           type="button"
-          className={clsx('btn h-12 w-12 bg-transparent px-0', more && 'btn-on')}
+          className={clsx('btn h-12 w-11 bg-transparent px-0', more && 'btn-on')}
           aria-expanded={more}
           aria-label="Text size, chord spelling and stage mode"
           onClick={() => setMore(!more)}
@@ -510,6 +624,7 @@ function Stage({ page, c }: { page: SheetPageData; c: Controls }) {
   const [progress, setProgress] = useState(0)
   const { setStage, setScrolling } = c
   useAutoScroll(c.scrolling, c.speed, ref, () => setScrolling(false))
+  useFollowScroll(c.now, ref, ref, true)
 
   useEffect(() => {
     const el = ref.current
@@ -560,6 +675,11 @@ function Stage({ page, c }: { page: SheetPageData; c: Controls }) {
           Exit
         </button>
       </div>
+      {c.play.state.status !== 'off' && (
+        <p className="mx-auto mt-2 w-full max-w-3xl px-6 text-sm font-bold text-ink-soft" role="status">
+          <PlayAlongStatus c={c} />
+        </p>
+      )}
       <div className="mx-auto mt-3 w-full max-w-3xl px-6">
         <div className="h-1 rounded-full bg-surface">
           <div className="h-1 rounded-full bg-chord" style={{ width: `${progress * 100}%` }} />
@@ -568,7 +688,7 @@ function Stage({ page, c }: { page: SheetPageData; c: Controls }) {
       <div ref={ref} className="stage flex-1 overflow-y-auto">
         <div className="mx-auto max-w-3xl px-8 pb-[70vh] pt-[18vh]">
           <ChordTipContext.Provider value={stageTips}>
-            <SheetView doc={c.doc} options={{ ...c.options, fontSize: c.options.fontSize + 7 }} className="font-bold" />
+            <SheetView doc={c.doc} options={{ ...c.options, fontSize: c.options.fontSize + 7 }} now={c.now} className="font-bold" />
           </ChordTipContext.Provider>
         </div>
       </div>
@@ -577,6 +697,7 @@ function Stage({ page, c }: { page: SheetPageData; c: Controls }) {
           <Minus className="h-5 w-5" aria-hidden />
         </button>
         <PlayButton c={c} size="xl" />
+        <ListenButton c={c} size="xl" />
         <button type="button" className="btn h-14 w-14 px-0" aria-label="Faster" onClick={() => c.setSpeed(Math.min(10, c.speed + 1))}>
           <Plus className="h-5 w-5" aria-hidden />
         </button>
