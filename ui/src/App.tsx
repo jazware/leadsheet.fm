@@ -11,6 +11,7 @@ import { LoginContext, useLogin } from '@/components/login'
 import { Avatar } from '@/components/Author'
 import { Logo } from '@/components/Logo'
 import { Footer } from '@/components/Footer'
+import { VoicingProvider } from '@/components/Voicings'
 import { SearchField } from '@/components/SearchField'
 import { HomePage } from '@/pages/HomePage'
 import { SearchPage } from '@/pages/SearchPage'
@@ -31,51 +32,53 @@ export default function App() {
 
   return (
     <LoginContext.Provider value={openLogin}>
-      <div className="mx-auto min-h-screen max-w-6xl px-5 pb-28 sm:px-8">
-        <Header className={clsx(onSheet && 'hidden lg:flex')} />
-        {loginError && (
-          <div className="no-print mb-6 flex items-start justify-between gap-4 rounded-2xl bg-glow px-4 py-3 text-sm font-bold text-glow-ink">
-            <span>Sign-in didn't finish: {loginError}</span>
-            <button
-              type="button"
-              className="underline"
-              onClick={() => {
-                params.delete('login_error')
-                setParams(params, { replace: true })
-              }}
-            >
-              Dismiss
-            </button>
-          </div>
-        )}
-        <main>
-          <Routes>
-            <Route path="/" element={<HomePage />} />
-            <Route path="/search" element={<SearchPage />} />
-            <Route path="/new" element={<EditorPage />} />
-            <Route path="/import" element={<ImportPage />} />
-            <Route path="/sheet/:actor/:rkey" element={<SheetPage />} />
-            <Route path="/sheet/:actor/:rkey/edit" element={<EditorPage />} />
-            <Route path="/songs/:artist/:title" element={<SongPage />} />
-            <Route path="/artists/:artist" element={<ArtistPage />} />
-            <Route path="/u/:actor" element={<ProfilePage />} />
-            <Route
-              path="*"
-              element={
-                <p className="font-bold">
-                  Nothing here.{' '}
-                  <Link className="text-chord underline" to="/">
-                    Find a song
-                  </Link>{' '}
-                  instead.
-                </p>
-              }
-            />
-          </Routes>
-        </main>
-        <Footer />
-      </div>
-      <LoginDialog open={login.open} reason={login.reason} onClose={() => setLogin({ open: false })} />
+      <VoicingProvider>
+        <div className="mx-auto min-h-screen max-w-6xl px-5 pb-28 sm:px-8">
+          <Header className={clsx(onSheet && 'hidden lg:flex')} />
+          {loginError && (
+            <div className="no-print mb-6 flex items-start justify-between gap-4 rounded-2xl bg-glow px-4 py-3 text-sm font-bold text-glow-ink">
+              <span>Sign-in didn't finish: {loginError}</span>
+              <button
+                type="button"
+                className="underline"
+                onClick={() => {
+                  params.delete('login_error')
+                  setParams(params, { replace: true })
+                }}
+              >
+                Dismiss
+              </button>
+            </div>
+          )}
+          <main>
+            <Routes>
+              <Route path="/" element={<HomePage />} />
+              <Route path="/search" element={<SearchPage />} />
+              <Route path="/new" element={<EditorPage />} />
+              <Route path="/import" element={<ImportPage />} />
+              <Route path="/sheet/:actor/:rkey" element={<SheetPage />} />
+              <Route path="/sheet/:actor/:rkey/edit" element={<EditorPage />} />
+              <Route path="/songs/:artist/:title" element={<SongPage />} />
+              <Route path="/artists/:artist" element={<ArtistPage />} />
+              <Route path="/u/:actor" element={<ProfilePage />} />
+              <Route
+                path="*"
+                element={
+                  <p className="font-bold">
+                    Nothing here.{' '}
+                    <Link className="text-chord underline" to="/">
+                      Find a song
+                    </Link>{' '}
+                    instead.
+                  </p>
+                }
+              />
+            </Routes>
+          </main>
+          <Footer />
+        </div>
+        <LoginDialog open={login.open} reason={login.reason} onClose={() => setLogin({ open: false })} />
+      </VoicingProvider>
     </LoginContext.Provider>
   )
 }

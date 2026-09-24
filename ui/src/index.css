@@ -132,9 +132,6 @@
   color: rgb(var(--bg));
   transition: background-color 0.15s, box-shadow 0.15s;
 }
-[data-now] * {
-  color: inherit;
-}
 @media (prefers-reduced-motion: reduce) {
   [data-now] {
     transition: none;

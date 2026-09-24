@@ -120,6 +120,42 @@ export function voicings(chord: Chord, strings: number[] = STANDARD_STRINGS): Vo
 // Searching takes ~1 ms a chord and capo suggestions ask for many.
 const searchCache = new Map<string, Voicing[]>()
 
+const MAX_SHAPES = 8
+
+/**
+ * Voicings to cycle through for a chord, at most eight: the one
+ * `voicings` would show first, the rest of the hand-checked shapes, then
+ * the best of the fretboard search, the extras ordered up the neck.
+ */
+export function shapesFor(chord: Chord, strings: number[] = STANDARD_STRINGS): Voicing[] {
+  const key = `shapes|${strings.join(',')}|${chord.root}:${chord.quality}`
+  let out = searchCache.get(key)
+  if (out) return out
+  const standard = strings.every((s, i) => s === STANDARD_STRINGS[i])
+  const head = standard ? standardVoicings(chord) : voicings(chord, strings).slice(0, 1)
+  const seen = new Set(head.map((v) => v.frets.join(',')))
+  let searched = searchCache.get(`std|${chord.root}:${chord.quality}`)
+  if (standard && !searched) {
+    searched = searchVoicings(chord, STANDARD_STRINGS)
+    searchCache.set(`std|${chord.root}:${chord.quality}`, searched)
+  }
+  const pool = standard ? searched! : voicings(chord, strings)
+  const chosen = [...head]
+  for (const v of pool) {
+    if (chosen.length >= MAX_SHAPES) break
+    if (seen.has(v.frets.join(',')) || !sensible(v)) continue
+    // Not just a chosen shape with strings left out.
+    if (chosen.some((u) => v.frets.every((f, i) => f === null || f === u.frets[i]))) continue
+    // At most two shapes around any one spot on the neck.
+    if (chosen.filter((u) => Math.abs(lowestFret(u) - lowestFret(v)) <= 1).length >= 2) continue
+    chosen.push(v)
+  }
+  const extra = chosen.slice(head.length).sort((a, b) => lowestFret(a) - lowestFret(b))
+  out = [...head, ...extra]
+  searchCache.set(key, out)
+  return out
+}
+
 function standardVoicings(chord: Chord): Voicing[] {
   const out: Voicing[] = []
   const open = OPEN[`${chord.root}:${chord.quality}`]
@@ -151,6 +187,21 @@ function standardVoicings(chord: Chord): Voicing[] {
     return found
   }
   return out
+}
+
+/**
+ * A shape worth offering: the hand stays within four frets, and up the
+ * neck the only open string is a root in the bass (no "open chord plus a
+ * note at fret 7" oddities).
+ */
+function sensible(v: Voicing): boolean {
+  const fretted = v.frets.filter((f): f is number => f !== null && f > 0)
+  if (!fretted.length) return true
+  const hi = Math.max(...fretted)
+  if (hi - Math.min(...fretted) > 3) return false
+  if (hi < 5) return true
+  const first = v.frets.findIndex((f) => f !== null)
+  return v.frets.every((f, i) => f !== 0 || i === first)
 }
 
 function lowestFret(v: Voicing): number {

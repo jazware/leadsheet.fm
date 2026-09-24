@@ -122,6 +122,7 @@ function SheetScreen({ page, actor }: { page: SheetPageData; actor: string }) {
           label={chordLabel(ch, c.options)}
           flats={c.flats}
           strings={shapeStrings(tuning)}
+          cycle
         />
       ))}
     </div>

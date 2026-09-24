@@ -1,4 +1,5 @@
-import { voicings } from '@/lib/guitar'
+import { ChevronLeft, ChevronRight } from 'lucide-react'
+import { useVoicing } from '@/components/Voicings'
 import { noteName, pretty, type ChordSymbol } from '@/lib/music'
 import { STANDARD_STRINGS } from '@/lib/tunings'
 
@@ -11,20 +12,29 @@ const TOP = 18
 const GAP_X = (W - PAD_X * 2) / (STRINGS - 1)
 const GAP_Y = (H - TOP - 6) / FRETS
 
-/** A guitar chord box with the easiest voicing we know. */
+/**
+ * A guitar chord box: the easiest voicing we know, or the one the reader
+ * picked for this chord. With `cycle`, arrows under the box step through
+ * the others.
+ */
 export function ChordDiagram({
   chord,
   label,
   flats,
   strings = STANDARD_STRINGS,
+  cycle,
 }: {
   chord: ChordSymbol
   label: string
   flats: boolean
   /** Open-string pitches the shape is for; labelled under the box unless standard. */
   strings?: number[]
+  cycle?: boolean
 }) {
-  const v = chord.quality ? voicings({ root: chord.root, quality: chord.quality }, strings)[0] : undefined
+  const { voicing: v, index, shapes, step } = useVoicing(
+    chord.quality ? { root: chord.root, quality: chord.quality } : null,
+    strings,
+  )
   const standard = strings.every((s, i) => s === STANDARD_STRINGS[i])
   const fretted = v?.frets.filter((f): f is number => f !== null && f > 0) ?? []
   const maxFret = fretted.length ? Math.max(...fretted) : 0
@@ -94,6 +104,44 @@ export function ChordDiagram({
               {noteName(m, flats)}
             </span>
           ))}
+        </div>
+      )}
+      {cycle && shapes.length > 1 && (
+        <div className="mt-1 flex w-full items-center justify-between text-ink-soft">
+          {/* mousedown kept from the chord name's button, so its tooltip stays open. */}
+          <button
+            type="button"
+            tabIndex={-1}
+            className="flex h-6 w-6 items-center justify-center rounded-full hover:bg-surface-raised hover:text-ink"
+            onMouseDown={(e) => e.preventDefault()}
+            onClick={(e) => {
+              e.stopPropagation()
+              step(-1)
+            }}
+            aria-label={`Previous ${label} voicing`}
+          >
+            <ChevronLeft className="h-4 w-4" aria-hidden />
+          </button>
+          <span className="text-[0.65rem] font-extrabold tabular-nums" aria-live="polite">
+            <span className="sr-only">Voicing </span>
+            {index + 1}
+            <span aria-hidden>/</span>
+            <span className="sr-only"> of </span>
+            {shapes.length}
+          </span>
+          <button
+            type="button"
+            tabIndex={-1}
+            className="flex h-6 w-6 items-center justify-center rounded-full hover:bg-surface-raised hover:text-ink"
+            onMouseDown={(e) => e.preventDefault()}
+            onClick={(e) => {
+              e.stopPropagation()
+              step(1)
+            }}
+            aria-label={`Next ${label} voicing`}
+          >
+            <ChevronRight className="h-4 w-4" aria-hidden />
+          </button>
         </div>
       )}
     </figure>
