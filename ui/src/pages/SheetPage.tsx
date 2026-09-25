@@ -995,7 +995,7 @@ function BottomBar({ c }: { c: Controls }) {
         <ListenButton c={c} size="lg" className="bg-transparent" />
         <button
           type="button"
-          className={clsx('btn h-12 w-11 bg-transparent px-0', more && 'btn-on')}
+          className={clsx('btn h-12 w-11 px-0', more ? 'btn-on' : 'bg-transparent')}
           aria-expanded={more}
           aria-label="More controls"
           onClick={() => setMore(!more)}
