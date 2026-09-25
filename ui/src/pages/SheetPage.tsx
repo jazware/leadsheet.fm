@@ -22,8 +22,7 @@ import { useTitle } from '@/hooks/useTitle'
 import { usePlayAlong, type PlayAlongState } from '@/listen/usePlayAlong'
 import { btcChord } from '@/listen/btc'
 import { ChordSoundContext, resolveVoicing, SheetShapesProvider, sheetShapes, usePicks } from '@/components/Voicings'
-import { playThrough } from '@/lib/pluck'
-import { chordBeats } from '@/lib/timing'
+import { BEATS_PER_CHORD, playThrough } from '@/lib/pluck'
 import { playAlongChords } from '@/listen/sheet'
 
 export function SheetPage() {
@@ -98,14 +97,14 @@ function useSheetControls(page: SheetPageData) {
   const [hearing, setHearing] = useState<number | null>(null)
   const stopHearing = useRef<(() => void) | null>(null)
   const sequence = useMemo(() => playAlongChords(doc).segments, [doc])
-  const beats = useMemo(() => chordBeats(doc), [doc])
   const hear = (from = 0, tempo = bpm) => {
     stopHearing.current?.()
     const strings = shapeStrings(tuning)
-    const frets = sequence.map((seg, i) => {
+    const frets = sequence.map((seg) => {
       const c = seg.chord!
       const shown = { ...c, root: mod12(c.root + shift), quality: simplify && c.quality ? simplifyQuality(c.quality) : c.quality }
-      return { frets: resolveVoicing(shown, strings, shapes, picks)?.frets ?? null, beats: beats[i] ?? 4 }
+      // The sheet doesn't say how long chords last: a bar each.
+      return { frets: resolveVoicing(shown, strings, shapes, picks)?.frets ?? null, beats: BEATS_PER_CHORD }
     })
     stopHearing.current = playThrough(frets, sound.strings, sound.capo, tempo, setHearing, () => {
       stopHearing.current = null

@@ -169,9 +169,9 @@ function Editor({
   const mine = mode !== 'edit' || viewer?.did === source?.did
   const ready = form.title.trim() && form.artist.trim() && form.content.trim()
 
-  // A sheet that's still a draft (or not saved at all) can be saved as a
-  // draft; publishing makes it public.
-  const canDraft = mode !== 'edit' || !!source?.draft
+  // Either way at any time: publish (or publish changes), or keep it as a
+  // draft, which also takes a published sheet back off Leadsheet's lists.
+  const published = mode === 'edit' && !source?.draft
   const publish = async (draft = false) => {
     if (!viewer) {
       openLogin(draft ? 'Sign in to save a draft to your account. It stays in this browser while you do.' : 'Sign in to publish. Your draft is kept while you do.')
@@ -248,6 +248,11 @@ function Editor({
       <div>
         <h1 className="text-3xl font-black tracking-tight">
           {mode === 'edit' ? `Edit ${source!.title}` : mode === 'fork' ? `Your version of ${source!.title}` : 'New sheet'}
+          {mode === 'edit' && (
+            <span className={clsx('pill ml-3 align-middle text-sm', source!.draft ? 'bg-glow text-glow-ink' : 'bg-surface text-ink-soft')}>
+              {source!.draft ? 'Draft' : 'Published'}
+            </span>
+          )}
         </h1>
         {mode === 'new' && !imported && (
           <p className="mt-1 font-semibold text-ink-soft">
@@ -471,27 +476,27 @@ function Editor({
 
       <div className="sticky bottom-0 -mx-5 flex flex-wrap items-center gap-3 border-t border-rule bg-bg px-5 py-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] sm:-mx-8 sm:px-8">
         <button type="button" className="btn btn-accent" disabled={busy || !ready} onClick={() => publish(false)}>
-          {busy ? 'Saving…' : mode === 'edit' && !source?.draft ? 'Publish changes' : 'Publish'}
+          {busy ? 'Saving…' : published ? 'Publish changes' : 'Publish'}
         </button>
-        {canDraft && (
-          <button
-            type="button"
-            className="btn"
-            disabled={busy || !ready}
-            onClick={() => publish(true)}
-            title="Saved to your account but not listed on Leadsheet. Like everything in an atproto account, it's still publicly readable."
-          >
-            {mode === 'edit' ? 'Save draft' : 'Save as draft'}
-          </button>
-        )}
+        <button
+          type="button"
+          className="btn"
+          disabled={busy || !ready}
+          onClick={() => publish(true)}
+          title={
+            published
+              ? "Takes it off Leadsheet's lists and search until you publish it again. Ratings and saves are kept."
+              : "Saved to your account but not listed on Leadsheet. Like everything in an atproto account, it's still publicly readable."
+          }
+        >
+          {published ? 'Move to drafts' : mode === 'edit' ? 'Save draft' : 'Save as draft'}
+        </button>
         <button type="button" className="btn" onClick={discard}>
-          {mode === 'edit' ? 'Discard changes' : 'Clear draft'}
+          {mode === 'edit' ? 'Discard changes' : 'Start over'}
         </button>
         <span className="text-sm font-semibold text-ink-soft">
           {viewer
-            ? canDraft
-              ? `Saved as a record in ${handleText(viewer)}'s atproto account. Drafts aren't listed on Leadsheet, but like any record anyone can read them.`
-              : `Saved as a record in ${handleText(viewer)}'s atproto account.`
+            ? `Saved as a record in ${handleText(viewer)}'s atproto account. Drafts aren't listed on Leadsheet, but like any record anyone can read them.`
             : 'Unsaved changes stay in this browser until you sign in and save.'}
         </span>
         {error && <p className="basis-full text-sm font-bold text-chord">{error}</p>}

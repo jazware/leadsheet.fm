@@ -85,10 +85,7 @@ another shape plays that one too, to compare them by ear.
 the whole chart through with the shapes the boxes show: a bar of "down,
 down-up, up-down-up" per chord at a set tempo, queued on the audio clock,
 lighting each chord up and scrolling along like play-along. The sheet
-doesn't say how long each chord lasts, so `ui/src/lib/timing.ts` reads it
-off the lyrics: a chord lasts until the next one (often across a line
-break), at about 1.5 sung syllables a beat plus a held beat and a half per
-line end, in half bars; chords on a line of their own get a bar each.
+doesn't say how long each chord lasts, so every chord gets a bar.
 Clicking a chord name plays it, or while the chart plays, carries on from
 there.
 
