@@ -21,6 +21,8 @@ services:
       # Confidential OAuth client key (multibase P-256, from `leadsheet gen-client-key`).
       LEADSHEET_OAUTH_CLIENT_KEY: ${LEADSHEET_OAUTH_CLIENT_KEY:-}
       LEADSHEET_METRICS_LISTEN_ADDRESS: 0.0.0.0:8122
+      # Traces go to this OTLP/HTTP collector when set.
+      OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-}
     ports:
       - "8120:8120"
       # Prometheus metrics and pprof, for the host's Alloy only.
