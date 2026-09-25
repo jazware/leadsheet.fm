@@ -160,7 +160,7 @@ let queued: AudioBufferSourceNode[] = []
  * to high; an upstroke, lighter, across the top four; a piano chord nearly
  * together. Whatever was ringing is damped at that moment.
  */
-function strumAt(notes: number[], instrument: Instrument, when: number, up = false, level = 1) {
+function strumAt(notes: number[], instrument: Instrument, when: number, up = false, level = 1, mute = false) {
   const { ctx, out } = audio()
   const pitches = up ? notes.slice(-4).reverse() : notes
   if (!pitches.length) return
@@ -173,6 +173,8 @@ function strumAt(notes: number[], instrument: Instrument, when: number, up = fal
     src.buffer = note(midi, instrument)
     const gain = ctx.createGain()
     gain.gain.value = base * (1 - i * 0.04)
+    // A chuck: strings damped by the hand as they're struck.
+    if (mute) gain.gain.setTargetAtTime(0, when + i * gap + 0.025, 0.012)
     src.connect(gain).connect(out)
     src.start(when + i * gap)
     src.onended = () => (queued = queued.filter((q) => q !== src))
@@ -244,13 +246,24 @@ export const BEATS_PER_CHORD = 4
  * holds when the page is busy. `onChord` fires as each chord starts
  * sounding and `onEnd` after the last; the returned function stops.
  */
+/** One stroke of a strumming pattern, placed in a chord's bar. */
+export interface StrokeEvent {
+  /** Beats into the chord. */
+  beat: number
+  kind: 'down' | 'up' | 'chuck' | 'miss'
+  level: number
+  /** Which stroke of the pattern this is (counting across its bars), for lighting it up. */
+  index: number
+}
+
 export function playThrough(
-  chords: { notes: number[] | null; beats: number }[],
+  chords: { notes: number[] | null; beats: number; strokes?: StrokeEvent[] }[],
   bpm: number,
   onChord: (index: number) => void,
   onEnd: () => void,
   from = 0,
   instrument: Instrument = 'guitar',
+  onStroke?: (chord: number, stroke: number) => void,
 ): () => void {
   const { ctx } = audio()
   void ctx.resume()
@@ -265,7 +278,22 @@ export function playThrough(
   const tick = () => {
     while (next < chords.length && at(next) < ctx.currentTime + 0.5) {
       const i = next++
-      const { notes, beats } = chords[i]
+      const { notes, beats, strokes } = chords[i]
+      if (strokes && instrument !== 'bass') {
+        // The sheet's strumming pattern (misses sound nothing but still light up).
+        for (const s of strokes) {
+          const when = at(i) + s.beat * beat
+          if (notes?.length && s.kind !== 'miss') {
+            if (instrument === 'piano') {
+              // Down strokes are the whole chord, up strokes the right hand; a chuck is a muted stab.
+              strumAt(s.kind === 'up' ? notes.slice(1) : notes, instrument, when, false, s.level, s.kind === 'chuck')
+            } else strumAt(notes, instrument, when, s.kind === 'up', s.level, s.kind === 'chuck')
+          }
+          if (onStroke) timers.push(setTimeout(() => onStroke(i, s.index), Math.max(0, (when - ctx.currentTime) * 1000)))
+        }
+        timers.push(setTimeout(() => onChord(i), Math.max(0, (at(i) - ctx.currentTime) * 1000)))
+        continue
+      }
       // The bar's pattern, repeated or cut short to fit the chord.
       for (let bar = 0; notes?.length && bar < beats; bar += BEATS_PER_CHORD) {
         const time = (b: number) => at(i) + (bar + b) * beat

@@ -158,7 +158,7 @@ func (s *Server) pageMeta(c echo.Context, path string) pageMeta {
 		m.Description = fmt.Sprintf("%d chord %s by %s on Leadsheet.", len(sheets), plural(len(sheets), "sheet"), name)
 		m.Type = "profile"
 	case len(parts) == 1 && parts[0] == "import":
-		m.Title = "Import from Ultimate Guitar | " + siteName
+		m.Title = "Import a tab | " + siteName
 	case len(parts) == 1 && parts[0] == "new":
 		m.Title = "New sheet | " + siteName
 	}

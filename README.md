@@ -1,6 +1,6 @@
 # leadsheet 🎸
 
-Chord sheets and tabs on atproto, in the spirit of Ultimate Guitar. Every
+Chord sheets and tabs on atproto. Every
 sheet, rating and favorite is a record in its author's own repo
 (`fm.leadsheet.*`). Leadsheet is an AppView: it follows the network, indexes
 those records into Postgres, and serves search, song pages and a sheet
@@ -13,11 +13,12 @@ On a sheet you can:
   in the tuning you have;
 - step through chord shapes, click a chord to hear it, or
   [hear the whole chart](#instruments-tunings-and-sound);
+- see its [strumming patterns](#strumming), and hear them played;
 - autoscroll, or [play along](#play-along) and have the page follow you;
 - listen to the recording it follows, and fork it into your own version.
 
 Sheets come in from the editor, as [drafts](#records) until published, or
-[from Ultimate Guitar](#importing-from-ultimate-guitar).
+[from a tab site](#importing-a-tab).
 
 ## Records
 
@@ -48,10 +49,13 @@ Sheet fields worth knowing:
   the sheet itself, with a Publish button. Publishing sets `draft` to false
   and `createdAt` to the moment of publishing, so it lists as new.
 
+**Strumming patterns** live in `content`, as ChordPro custom directives
+(which other ChordPro apps skip); see [Strumming](#strumming).
+
 **Versions** aren't a record. Sheets are grouped into songs by normalized
 artist and title slugs: accents, "The", "feat. …", and "(Live)"/"- Remastered"
 suffixes are ignored (`pkg/records/slug.go`). They're numbered in publication
-order, like UG's "ver 2", and ranked by a Bayesian average rating.
+order ("ver 2") and ranked by a Bayesian average rating.
 
 **Permissions:** sign-in requests `atproto include:fm.leadsheet.authFull`,
 a published permission set (`lexicons/fm/leadsheet/authFull.json`) granting
@@ -138,6 +142,29 @@ YouTube, Spotify and SoundCloud `links` play in place (`embedFor` in
 `ui/src/lib/links.ts`), loaded only when pressed, so reading a sheet
 doesn't contact those sites.
 
+### Strumming
+
+A pattern is one character per slot: `D` down, `U` up, `x` a muted chuck,
+`.` a miss (the hand keeps moving), `>` accenting the next stroke and `|`
+starting another bar. The time signature (`{time: 3/4}`, default 4/4) and
+the pattern's length set the grid: eight slots in 4/4 are eighth notes.
+
+```
+{x_strum: verse  D.DU.UDU}   names a pattern; the first is in use from the start
+{x_strum: chorus D.D.D.D.}   names another
+{x_strum: chorus}            switches to it, from here on
+{x_strum: once D.......}     one bar of this, then back
+{x_strum: D.DU.UDU}          or just the sheet's one pattern
+```
+
+A switch just before a section shows as a chip beside its label; one
+mid-section marks the line. The sidebar (a card under the title on
+phones) lists the patterns, highlighting the one at the chord being
+heard or played, and "Hear the chords" strums each chord in its pattern
+at `{tempo}`, lighting each stroke. The editor's Strum button builds a
+directive by tapping slots (`ui/src/lib/strum.ts`,
+`ui/src/components/StrumBuilder.tsx`).
+
 ### Play along
 
 The Follow button (the mic) listens while you play, lights up the chord
@@ -156,15 +183,15 @@ leaves the device (`ui/src/listen/`):
   `packages/chordex/ondevice`. `just ui-test` runs the follower and an
   end-to-end test on synthesized audio.
 
-### Importing from Ultimate Guitar
+### Importing a tab
 
-`/import` hands out a "Send to Leadsheet" bookmarklet. On a UG chords or tab
-page it reads the tab from the page (`window.UGAPP.store.page.data`, or the
-older `.js-store`), and opens `/new#import=<base64 JSON>` here: the URL
-fragment never reaches a server. The editor turns UG's `[ch]`/`[tab]` markup
-into ChordPro (`ui/src/lib/ultimateGuitar.ts`), maps type, key, capo, tuning
+`/import` hands out a "Send to Leadsheet" bookmarklet. On a chords or tab
+page it reads the tab from the page's data and opens
+`/new#import=<base64 JSON>` here: the URL fragment never reaches a server.
+The editor turns `[ch]`/`[tab]` chord-tag markup into ChordPro
+(`ui/src/lib/tabImport.ts`), maps type, key, capo, tuning
 and difficulty, credits the transcriber in the description, and keeps it as
-a draft until the user publishes. Pasting UG markup or chords-over-lyrics
+a draft until the user publishes. Pasting chord-tag markup or chords-over-lyrics
 text into the editor converts too. `just ui-test` covers the conversion.
 
 ## Running it

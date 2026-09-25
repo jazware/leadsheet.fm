@@ -11,6 +11,8 @@
     --bg: 15 22 38;
     --surface: 26 35 56;
     --surface-raised: 36 47 72;
+    /* A recessed strip inside a surface (the sidebar's playing controls). */
+    --band: 20 28 46;
     --rule: 42 53 82;
     --ink: 244 241 234;
     --ink-soft: 169 179 201;
@@ -25,6 +27,7 @@
     --bg: 246 248 252;
     --surface: 230 235 245;
     --surface-raised: 255 255 255;
+    --band: 222 228 240;
     --rule: 207 215 230;
     --ink: 18 26 44;
     --ink-soft: 74 86 112;
@@ -138,18 +141,18 @@
   }
 }
 
-/* The sidebar's scrolling chord shapes: a thin scrollbar, and an edge that
+/* A scroller (the sheet page's sidebar): a thin scrollbar, and an edge that
    fades while there's more beyond it. */
-.shapes-scroll {
+.scroll-fade {
   --fade-top: 0px;
   --fade-bottom: 0px;
   scrollbar-width: thin;
   scrollbar-color: rgb(var(--rule)) transparent;
   mask-image: linear-gradient(to bottom, transparent 0, #000 var(--fade-top), #000 calc(100% - var(--fade-bottom)), transparent 100%);
 }
-.shapes-scroll.fade-top {
+.scroll-fade.fade-top {
   --fade-top: 20px;
 }
-.shapes-scroll.fade-bottom {
+.scroll-fade.fade-bottom {
   --fade-bottom: 28px;
 }

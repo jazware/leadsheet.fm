@@ -11,6 +11,7 @@ export default {
       colors: {
         bg: token('bg'),
         surface: { DEFAULT: token('surface'), raised: token('surface-raised') },
+        band: token('band'),
         rule: token('rule'),
         ink: { DEFAULT: token('ink'), soft: token('ink-soft'), faint: token('ink-faint') },
         chord: token('chord'),

@@ -6,8 +6,10 @@ import { ChevronDown, FileUp, Trash2 } from 'lucide-react'
 import { api, profilePath, sheetInput, sheetPath, type Sheet, type SheetInput } from '@/lib/api'
 import { chordsIn, parseChordPro, type Doc } from '@/lib/chordpro'
 import { CHORDPRO_ACCEPT, fromChordProFile } from '@/lib/chordproFile'
+import { StrumBuilder } from '@/components/StrumBuilder'
+import { StrumStrip, strumName } from '@/components/Strum'
 import { chordsOverLyricsToChordPro, looksLikeChordsOverLyrics } from '@/lib/convert'
-import { importDraftKey, importToSheet, looksLikeUGMarkup, readImport, ugToChordPro, type UGImport } from '@/lib/ultimateGuitar'
+import { importDraftKey, importToSheet, looksLikeTagMarkup, readImport, tagMarkupToChordPro, type TabImport } from '@/lib/tabImport'
 import { forgetSheet } from '@/lib/recent'
 import { getTuning, instrumentOf, shapeStrings, tuningsFor } from '@/lib/tunings'
 import { useViewer } from '@/hooks/queries'
@@ -64,7 +66,7 @@ export function EditorPage() {
   const fork = params.get('fork')
   const [srcActor, srcRkey] = actor && rkey ? [actor, rkey] : fork ? fork.split('/') : []
   const mode: 'new' | 'edit' | 'fork' = actor ? 'edit' : fork ? 'fork' : 'new'
-  // A sheet sent over by the Ultimate Guitar bookmarklet, in the URL fragment.
+  // A sheet sent over by the import bookmarklet, in the URL fragment.
   const [imported] = useState(() => (mode === 'new' ? readImport(window.location.hash) : null))
   useEffect(() => {
     if (imported) window.history.replaceState(window.history.state, '', window.location.pathname + window.location.search)
@@ -102,7 +104,7 @@ function Editor({
   mode: 'new' | 'edit' | 'fork'
   source?: Sheet
   draftKey: string
-  imported?: UGImport
+  imported?: TabImport
 }) {
   const viewer = useViewer()
   const openLogin = useLogin()
@@ -225,7 +227,7 @@ function Editor({
   }
 
   const convert = () => {
-    set('content', looksLikeUGMarkup(form.content) ? ugToChordPro(form.content) : chordsOverLyricsToChordPro(form.content))
+    set('content', looksLikeTagMarkup(form.content) ? tagMarkupToChordPro(form.content) : chordsOverLyricsToChordPro(form.content))
     setPastedLayout(false)
   }
 
@@ -248,6 +250,8 @@ function Editor({
     setPastedLayout(false)
     setOpened({ name: file.name, prev, moreSongs })
   }
+
+  const [strumOpen, setStrumOpen] = useState(false)
 
   const insert = (snippet: string) => {
     const el = textarea.current
@@ -283,7 +287,7 @@ function Editor({
         </h1>
         {mode === 'new' && !imported && (
           <p className="mt-1 font-semibold text-ink-soft">
-            Have it on Ultimate Guitar?{' '}
+            Have it on a tab site?{' '}
             <Link className="font-extrabold text-chord hover:underline" to="/import">
               Import it
             </Link>
@@ -296,10 +300,10 @@ function Editor({
             {/* The import comes from the page's own link, so its URL is anyone's: only link a web page. */}
             {isWebLink(imported.url) ? (
               <a className="underline" href={imported.url} target="_blank" rel="noreferrer">
-                Ultimate Guitar
+                the original page
               </a>
             ) : (
-              'Ultimate Guitar'
+              'another site'
             )}
             {imported.author && <> (transcribed by {imported.author})</>}. Check the chords line up, then publish. Nothing
             is shared until you do.
@@ -446,7 +450,21 @@ function Editor({
             <button type="button" className="btn btn-sm" onClick={() => insert('{comment: }\n')}>
               Note
             </button>
+            <button type="button" className={clsx('btn btn-sm', strumOpen && 'btn-on')} aria-expanded={strumOpen} onClick={() => setStrumOpen(!strumOpen)}>
+              Strum
+            </button>
           </div>
+          {strumOpen && (
+            <StrumBuilder
+              sheetTime={doc.meta.time}
+              bpm={Number.parseInt(doc.meta.tempo ?? '', 10) || 90}
+              onInsert={(text) => {
+                insert(text)
+                setStrumOpen(false)
+              }}
+              onClose={() => setStrumOpen(false)}
+            />
+          )}
           {opened && (
             <div className="flex flex-wrap items-center justify-between gap-2 rounded-2xl bg-glow px-4 py-2.5 font-bold text-glow-ink" role="status">
               <span className="min-w-0 break-words">
@@ -499,7 +517,7 @@ function Editor({
             onChange={(e) => set('content', e.target.value)}
             onPaste={(e) => {
               const text = e.clipboardData.getData('text')
-              if (looksLikeUGMarkup(text) || looksLikeChordsOverLyrics(text)) setPastedLayout(true)
+              if (looksLikeTagMarkup(text) || looksLikeChordsOverLyrics(text)) setPastedLayout(true)
             }}
             // Dropping a file opens it.
             onDragOver={(e) => {
@@ -539,6 +557,17 @@ function Editor({
                 <ShapesEditor doc={doc} strings={strings} count={liveVoicings(form.voicings, doc).length} />
               )}
               <div className="label">Preview{!form.content && ' of the example'}</div>
+              {/* The sheet's strumming patterns (the sheet page shows them beside it). */}
+              {doc.strums.length > 0 && (
+                <div className="mb-3 flex flex-wrap gap-x-5 gap-y-2 rounded-2xl bg-surface px-4 py-2.5">
+                  {doc.strums.map((s, i) => (
+                    <div key={i} className="flex flex-col gap-1">
+                      <span className="text-xs font-extrabold text-ink-soft">{strumName(s.name)}</span>
+                      <StrumStrip pattern={s.pattern} time={doc.meta.time} size="sm" />
+                    </div>
+                  ))}
+                </div>
+              )}
               <div className={clsx('rounded-[20px] border-2 border-surface p-5', !form.content && 'opacity-60')}>
                 <ChordTipContext.Provider value={{ strings, instrument: instrumentOf(form.kind) }}>
                   <SheetView doc={doc} options={{ shift: 0, flats: false, simplify: false, fontSize: 18 }} />

@@ -5,7 +5,7 @@
 import type { SheetInput } from '@/lib/api'
 import { chordsOverLyricsToChordPro, looksLikeChordsOverLyrics } from '@/lib/convert'
 import { getTuning, tuningsFor } from '@/lib/tunings'
-import { looksLikeUGMarkup, ugToChordPro } from '@/lib/ultimateGuitar'
+import { looksLikeTagMarkup, tagMarkupToChordPro } from '@/lib/tabImport'
 
 /** What the file picker offers. */
 export const CHORDPRO_ACCEPT = '.cho,.chordpro,.chopro,.crd,.pro,.txt,text/plain'
@@ -144,8 +144,8 @@ export function fromChordProFile(text: string): ChordProImport {
   if (notes.length) fields.description = notes.join('\n').trim()
 
   let content = body.join('\n').trim()
-  // A plain text file of chords above lyrics (or UG markup) comes in as ChordPro.
-  if (looksLikeUGMarkup(content)) content = ugToChordPro(content)
+  // A plain text file of chords above lyrics (or chord-tag markup) comes in as ChordPro.
+  if (looksLikeTagMarkup(content)) content = tagMarkupToChordPro(content)
   else if (looksLikeChordsOverLyrics(content)) content = chordsOverLyricsToChordPro(content).trim()
   return { fields, content, moreSongs: songs.length > 1 }
 }

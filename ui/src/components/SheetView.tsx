@@ -2,6 +2,7 @@ import { clsx } from 'clsx'
 import type { Block, Doc, Line, Segment } from '@/lib/chordpro'
 import { pretty, symbolText, transposeSymbol, type ChordSymbol } from '@/lib/music'
 import { ChordTip } from '@/components/ChordTip'
+import { StrumChip } from '@/components/Strum'
 
 export interface ViewOptions {
   /** Semitones to move every chord by (transpose minus capo change). */
@@ -47,7 +48,7 @@ export function SheetView({
   return (
     <div className={clsx('font-semibold', className)} style={{ fontSize: options.fontSize }}>
       {doc.blocks.map((b, i) => (
-        <BlockView key={i} block={b} options={options} now={now} onChordClick={onChordClick} />
+        <BlockView key={i} block={b} time={doc.meta.time} options={options} now={now} onChordClick={onChordClick} />
       ))}
     </div>
   )
@@ -55,11 +56,13 @@ export function SheetView({
 
 function BlockView({
   block,
+  time,
   options,
   now,
   onChordClick,
 }: {
   block: Block
+  time?: string
   options: ViewOptions
   now?: Segment | null
   onChordClick?: (s: Segment) => boolean
@@ -68,8 +71,12 @@ function BlockView({
   const panel = block.kind === 'chorus'
   return (
     <section className={clsx('mb-[1.1em] break-inside-avoid', panel && '-mx-4 rounded-[20px] bg-surface px-4 pb-[0.4em] pt-3')}>
-      {label && (
-        <h3 className={clsx('pill mb-2.5 text-[0.72em]', panel && 'bg-bg')}>{label}</h3>
+      {(label || block.strum) && (
+        <div className="mb-2.5 flex flex-wrap items-center gap-2">
+          {label && <h3 className={clsx('pill text-[0.72em]', panel && 'bg-bg')}>{label}</h3>}
+          {/* The section switches strumming pattern. */}
+          {block.strum && <StrumChip change={block.strum} time={time} className={panel ? 'bg-bg' : undefined} />}
+        </div>
       )}
       {block.kind === 'tab' ? (
         <pre data-line className="overflow-x-auto rounded-2xl bg-surface p-3 font-mono text-[0.72em] font-normal leading-snug">
@@ -78,7 +85,7 @@ function BlockView({
       ) : (
         <div className="leading-tight">
           {block.lines.map((l, i) => (
-            <LineView key={i} line={l} options={options} now={now} onChordClick={onChordClick} />
+            <LineView key={i} line={l} time={time} options={options} now={now} onChordClick={onChordClick} />
           ))}
         </div>
       )}
@@ -90,16 +97,26 @@ const chordCls = 'whitespace-nowrap text-[0.9em] font-black leading-none text-ch
 
 function LineView({
   line,
+  time,
   options,
   now,
   onChordClick,
 }: {
   line: Line
+  time?: string
   options: ViewOptions
   now?: Segment | null
   onChordClick?: (s: Segment) => boolean
 }) {
   if (line.type === 'blank') return <div className="h-[0.9em]" />
+  if (line.type === 'strum') {
+    // Mid-section: from this line on (or for one bar, "once").
+    return (
+      <div className="my-1.5">
+        <StrumChip change={line.change} time={time} note={line.change.once ? 'one bar' : 'from here'} />
+      </div>
+    )
+  }
   if (line.type === 'comment') {
     return <p className="my-1.5 text-[0.8em] font-bold italic text-ink-soft">{line.text}</p>
   }

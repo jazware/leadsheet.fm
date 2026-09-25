@@ -6,6 +6,8 @@ import { useQueryClient } from '@tanstack/react-query'
 import { ArrowLeft, Bookmark, ChevronDown, Download, ExternalLink, GitFork, Maximize2, Mic, MicOff, Minus, Pause, Pencil, Play, Plus, Printer, SlidersHorizontal, Square, Volume2, X } from 'lucide-react'
 import { api, KIND_LABEL, sheetInput, sheetPath, type SheetPage as SheetPageData } from '@/lib/api'
 import { chordsIn, parseChordPro, type Segment } from '@/lib/chordpro'
+import { beatsPerBar, strumEvents, strumsByChord, type StrumChange, type StrumPattern } from '@/lib/strum'
+import { StrumStrip, strumName } from '@/components/Strum'
 import { chordProFileName, toChordProFile } from '@/lib/chordproFile'
 import { embedFor, isWebLink, linkLabel } from '@/lib/links'
 import { keyText, keyUsesFlats, mod12, noteName, parseKey, pretty, simplifyQuality, type Quality } from '@/lib/music'
@@ -122,12 +124,22 @@ function useSheetControls(page: SheetPageData) {
   // Capos are for guitar and ukulele.
   const capoable = instrument === 'guitar' || instrument === 'ukulele'
 
-  // Hearing the whole chart: the shapes the boxes show, each chord a bar.
+  // Hearing the whole chart: the shapes the boxes show, each chord a bar,
+  // strummed in the sheet's pattern where it has one.
   const picks = usePicks()
-  const [bpm, setBpm] = usePref('bpm', 90)
+  // The sheet's {tempo} if it gives one (a change stays with this visit),
+  // or the reader's own.
+  const sheetTempo = Number.parseInt(doc.meta.tempo ?? '', 10)
+  const [tempo, setTempo] = useState<number | null>(sheetTempo >= 40 && sheetTempo <= 240 ? sheetTempo : null)
+  const [bpmPref, setBpmPref] = usePref('bpm', 90)
+  const bpm = tempo ?? bpmPref
+  const setBpm = (n: number) => (tempo !== null ? setTempo(n) : setBpmPref(n))
   const [hearing, setHearing] = useState<number | null>(null)
+  const [stroke, setStroke] = useState(-1)
   const stopHearing = useRef<(() => void) | null>(null)
   const sequence = useMemo(() => playAlongChords(doc).segments, [doc])
+  const strumOf = useMemo(() => strumsByChord(doc), [doc])
+  const barBeats = beatsPerBar(doc.meta.time)
   const hear = (from = 0, tempo = bpm) => {
     stopHearing.current?.()
     const notes = sequence.map((seg) => {
@@ -145,19 +157,37 @@ function useSheetControls(page: SheetPageData) {
               const frets = resolveVoicing(shown, strings, shapes, picks)?.frets
               return frets && chordPitches(frets, sound.strings, capo)
             })()
-      // The sheet doesn't say how long chords last: a bar each.
-      return { notes: played ?? null, beats: BEATS_PER_CHORD }
+      return played ?? null
     })
-    stopHearing.current = playThrough(notes, tempo, setHearing, () => {
+    // The sheet doesn't say how long chords last: a bar each. A pattern's
+    // bars take turns across the chords it covers.
+    let run: StrumChange | undefined
+    let bar = 0
+    const chart = sequence.map((seg, i) => {
+      const change = strumOf.get(seg)
+      if (change !== run) {
+        run = change
+        bar = 0
+      }
+      if (!change) return { notes: notes[i], beats: barBeats || BEATS_PER_CHORD }
+      const bars = change.pattern.bars
+      const k = bar++ % bars.length
+      const offset = bars.slice(0, k).reduce((n, b) => n + b.length, 0)
+      return { notes: notes[i], beats: barBeats, strokes: strumEvents(bars[k], barBeats, offset) }
+    })
+    setStroke(-1)
+    stopHearing.current = playThrough(chart, tempo, setHearing, () => {
       stopHearing.current = null
       setHearing(null)
-    }, from, instrument)
+      setStroke(-1)
+    }, from, instrument, (_chord, s) => setStroke(s))
     setHearing(from)
   }
   const silence = () => {
     stopHearing.current?.()
     stopHearing.current = null
     setHearing(null)
+    setStroke(-1)
   }
   useEffect(() => () => stopHearing.current?.(), [])
   // A new instrument (or key, capo, spelling or voicing) takes over from the
@@ -171,6 +201,18 @@ function useSheetControls(page: SheetPageData) {
   }, [heard])
 
   const now = play.state.status === 'listening' ? play.state.now : hearing !== null ? sequence[hearing] ?? null : null
+  // The strumming pattern at the chord being heard or played, else the sheet's first.
+  const strumNow = (now && strumOf.get(now)) || doc.strum
+  // A different pattern coming up within a few chords, for stage mode.
+  let strumNext: StrumChange | null = null
+  const at = now ? sequence.indexOf(now) : -1
+  for (let j = at + 1; at >= 0 && j < Math.min(sequence.length, at + 5); j++) {
+    const ch = strumOf.get(sequence[j])
+    if (ch && ch !== strumNow) {
+      strumNext = ch
+      break
+    }
+  }
 
   return {
     doc, chords, options, flats,
@@ -181,6 +223,7 @@ function useSheetControls(page: SheetPageData) {
     play, now, shapes, sound, capoable,
     instrument, written, setInstrument, tuning, strings, sheetTuning, tunings, setTuningId,
     hearing: hearing !== null, bpm,
+    strumNow, strumNext, strokeLit: hearing !== null ? stroke : -1,
     // Clicking a chord while the chart plays carries on from there.
     // Returns whether it did (otherwise the chord just strums).
     playFrom: (seg: Segment) => {
@@ -233,6 +276,8 @@ function SheetScreen({ page, actor }: { page: SheetPageData; actor: string }) {
   const sheetRef = useRef<HTMLDivElement>(null)
   const railRef = useRef<HTMLDivElement>(null)
   useFitWindow(railRef)
+  const railScroll = useRef<HTMLDivElement>(null)
+  const railFade = useScrollFade(railScroll)
   useFollowScroll(c.now, sheetRef, null, !c.stage)
   const { shapes, sound } = c
 
@@ -273,6 +318,9 @@ function SheetScreen({ page, actor }: { page: SheetPageData; actor: string }) {
             {sheet.description && (
               <p className="card whitespace-pre-line px-4 py-3 font-semibold text-ink-soft">{sheet.description}</p>
             )}
+            <div className="no-print lg:hidden">
+              <StrumLegend c={c} compact />
+            </div>
             <div className="no-print lg:hidden">{diagrams}</div>
             <div ref={sheetRef}>
               <ChordTipContext.Provider value={{ strings: c.strings, instrument: c.instrument }}>
@@ -282,25 +330,24 @@ function SheetScreen({ page, actor }: { page: SheetPageData; actor: string }) {
             <Related page={page} />
           </div>
           <aside className="no-print hidden lg:block">
-            {/* Never past the bottom of the window: the shapes scroll inside
-                it (see ScrollShapes). On a window too short even for two rows
-                of them, the card itself scrolls. */}
-            <div ref={railRef} className="card sticky top-4 flex max-h-[calc(100dvh-2rem)] flex-col gap-4 overflow-y-auto p-4">
-              <div className="flex shrink-0 flex-col gap-4">
+            {/* Never past the bottom of the window: what doesn't fit scrolls,
+                the card as one (faded at an edge with more past it). */}
+            <div ref={railRef} className="card sticky top-4 flex max-h-[calc(100dvh-2rem)] flex-col overflow-hidden">
+              <div
+                ref={railScroll}
+                className={clsx('scroll-fade flex min-h-0 flex-col gap-4 overflow-y-auto p-4', railFade.top && 'fade-top', railFade.bottom && 'fade-bottom')}
+              >
                 <SidebarControls c={c} />
-              </div>
-              {diagrams && (
-                <ScrollShapes
-                  label={
-                    <>
+                {diagrams && (
+                  <div>
+                    <div className="label">
                       {c.instrument !== c.written ? `${INSTRUMENT_NAME[c.instrument]} shapes` : 'Shapes'}
                       {tuning && tuning.id !== 'standard' && <>, {tuning.name}</>}
-                    </>
-                  }
-                >
-                  {diagrams}
-                </ScrollShapes>
-              )}
+                    </div>
+                    {diagrams}
+                  </div>
+                )}
+              </div>
             </div>
           </aside>
         </article>
@@ -311,67 +358,24 @@ function SheetScreen({ page, actor }: { page: SheetPageData; actor: string }) {
   )
 }
 
-/**
- * The sidebar's chord shapes: they take the room the controls leave and
- * scroll on their own, never shrinking below two rows. An edge fades while
- * there's more beyond it, and scrolling them doesn't scroll the page.
- */
-function ScrollShapes({ label, children }: { label: React.ReactNode; children: React.ReactNode }) {
-  const box = useRef<HTMLDivElement>(null)
-  const list = useRef<HTMLDivElement>(null)
+/** Whether a scroller has more above or below, for fading those edges. */
+function useScrollFade(ref: React.RefObject<HTMLElement | null>) {
   const [fade, setFade] = useState({ top: false, bottom: false })
-  // How many shapes are wholly or partly below the fold, for the "more" pill.
-  const [below, setBelow] = useState(0)
-  const [twoRows, setTwoRows] = useState<number | undefined>()
-
   useEffect(() => {
-    const el = list.current
+    const el = ref.current
     if (!el) return
-    const update = () => {
-      setFade({ top: el.scrollTop > 2, bottom: el.scrollTop + el.clientHeight < el.scrollHeight - 2 })
-      const grid = el.firstElementChild as HTMLElement | null
-      const fold = el.getBoundingClientRect().bottom - 8
-      setBelow(grid ? [...grid.children].filter((b) => b.getBoundingClientRect().bottom > fold).length : 0)
-      // Two rows of boxes: the first box's height, twice, plus the gap.
-      const first = grid?.firstElementChild as HTMLElement | null
-      if (grid && first) setTwoRows(first.offsetHeight * 2 + parseFloat(getComputedStyle(grid).rowGap || '0'))
-    }
+    const update = () => setFade({ top: el.scrollTop > 2, bottom: el.scrollTop + el.clientHeight < el.scrollHeight - 2 })
     update()
     el.addEventListener('scroll', update, { passive: true })
     const ro = new ResizeObserver(update)
     ro.observe(el)
-    if (el.firstElementChild) ro.observe(el.firstElementChild)
+    for (const child of el.children) ro.observe(child)
     return () => {
       el.removeEventListener('scroll', update)
       ro.disconnect()
     }
-  }, [])
-
-  return (
-    <div ref={box} className="relative flex min-h-0 flex-1 flex-col" style={{ minHeight: twoRows !== undefined ? twoRows + 24 : undefined }}>
-      <div className="label shrink-0">{label}</div>
-      <div
-        ref={list}
-        tabIndex={0}
-        aria-label="Chord shapes"
-        className={clsx('shapes-scroll -mx-4 min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 focus-visible:ring-inset', fade.top && 'fade-top', fade.bottom && 'fade-bottom')}
-      >
-        {children}
-      </div>
-      {fade.bottom && below > 0 && (
-        <button
-          type="button"
-          tabIndex={-1}
-          aria-hidden
-          className="absolute bottom-1 left-1/2 flex -translate-x-1/2 items-center gap-1 whitespace-nowrap rounded-full border border-rule bg-surface-raised py-1 pl-3 pr-2 text-[0.75rem] font-extrabold text-ink shadow-float hover:text-chord"
-          onClick={() => list.current?.scrollBy({ top: list.current.clientHeight * 0.8, behavior: 'smooth' })}
-        >
-          {below} more {below === 1 ? 'shape' : 'shapes'}
-          <ChevronDown className="h-3.5 w-3.5" aria-hidden />
-        </button>
-      )}
-    </div>
-  )
+  }, [ref])
+  return fade
 }
 
 /**
@@ -545,6 +549,81 @@ function SpellingRow({ c, textSize }: { c: Controls; textSize: boolean }) {
   )
 }
 
+const slots = (p: StrumPattern) => p.bars.reduce((n, b) => n + b.length, 0)
+
+/**
+ * The sheet's strumming patterns: the one in use highlighted (the one at
+ * the chord being heard or played, else the sheet's first), its stroke
+ * lit while the chart plays. On phones, a compact card under the title.
+ */
+function StrumLegend({ c, compact }: { c: Controls; compact?: boolean }) {
+  const current = c.strumNow
+  if (!current) return null
+  const { strums, meta } = c.doc
+  const time = meta.time
+  const size = (p: StrumPattern) => (slots(p) > 10 ? 'xs' : 'sm')
+  const active = (s: { name: string | null; pattern: StrumPattern }) => !current.once && s.name === current.name && s.pattern === current.pattern
+  const head = (
+    <div className="flex items-baseline justify-between text-[0.75rem] font-extrabold text-ink-soft">
+      <span>Strum</span>
+      <span>
+        {time ?? '4/4'}, {c.bpm} bpm
+      </span>
+    </div>
+  )
+  if (compact) {
+    return (
+      <div className="flex flex-col gap-2 rounded-[18px] bg-surface px-3.5 py-2.5">
+        {head}
+        {strums.length > 1 && (
+          <div className="flex flex-wrap gap-1.5">
+            {strums.map((s, i) => (
+              <span key={i} className={clsx('rounded-full px-3 py-1 text-[0.8rem] font-extrabold', active(s) ? 'bg-glow text-glow-ink' : 'bg-surface-raised text-ink-soft')}>
+                {strumName(s.name)}
+              </span>
+            ))}
+            {current.once && <span className="rounded-full border-2 border-chord px-3 py-0.5 text-[0.8rem] font-extrabold">Once</span>}
+          </div>
+        )}
+        <StrumStrip pattern={current.pattern} time={time} size={slots(current.pattern) > 12 ? 'xs' : 'sm'} lit={c.strokeLit} />
+      </div>
+    )
+  }
+  if (strums.length <= 1 && !current.once) {
+    return (
+      <div className="flex flex-col gap-2">
+        {head}
+        <StrumStrip pattern={current.pattern} time={time} size={slots(current.pattern) > 8 ? size(current.pattern) : 'md'} lit={c.strokeLit} className="rounded-2xl bg-surface-raised px-2 py-1" />
+      </div>
+    )
+  }
+  return (
+    <div className="flex flex-col gap-1.5">
+      {head}
+      {strums.map((s, i) =>
+        active(s) ? (
+          <div key={i} className="flex flex-col gap-1 rounded-2xl border-2 border-glow bg-surface-raised px-2.5 py-1.5">
+            <span className="text-[0.8rem] font-black">{strumName(s.name)}</span>
+            <StrumStrip pattern={s.pattern} time={time} size={size(s.pattern)} lit={c.strokeLit} />
+          </div>
+        ) : (
+          // The others, a line each: enough to see what's coming.
+          <div key={i} className="flex items-center justify-between gap-2 px-3 py-0.5">
+            <span className="text-[0.78rem] font-extrabold text-ink-soft">{strumName(s.name)}</span>
+            <StrumStrip pattern={s.pattern} time={time} size="xs" />
+          </div>
+        ),
+      )}
+      {current.once && (
+        <div className="flex flex-col gap-1 rounded-2xl border-2 border-chord px-2.5 py-1.5">
+          <span className="text-[0.8rem] font-black">Once, one bar</span>
+          <StrumStrip pattern={current.pattern} time={time} size={size(current.pattern)} lit={c.strokeLit} />
+        </div>
+      )}
+    </div>
+  )
+}
+
 /** The desktop sidebar's controls, compact: all of them above the shapes in one screenful. */
 function SidebarControls({ c }: { c: Controls }) {
   return (
@@ -560,8 +639,10 @@ function SidebarControls({ c }: { c: Controls }) {
       <InstrumentSwitch c={c} />
       <TuningSelect c={c} />
       <SpellingRow c={c} textSize={c.capoable} />
-      <div className="h-px bg-rule" />
-      <div className="grid grid-cols-4 gap-1.5">
+      {/* Playing: a recessed band across the card, between how the chords
+          are shown (above) and their shapes (below). */}
+      <div className="-mx-4 flex flex-col gap-4 bg-band px-4 py-4">
+        <div className="grid grid-cols-4 gap-1.5">
         <Tile
           icon={c.scrolling ? <Pause className="h-4 w-4 fill-current" aria-hidden /> : <Play className="h-4 w-4 fill-current" aria-hidden />}
           label="Scroll"
@@ -590,8 +671,10 @@ function SidebarControls({ c }: { c: Controls }) {
           <PlayAlongStatus c={c} />
         </p>
       )}
-      <PlaybackSettings c={c} />
-      <div className="h-px bg-rule" />
+        <PlaybackSettings c={c} />
+        {/* Just above the shapes: how to play them. */}
+        <StrumLegend c={c} />
+      </div>
     </>
   )
 }
@@ -1170,6 +1253,24 @@ function Stage({ page, c }: { page: SheetPageData; c: Controls }) {
           <div ref={bar} className="h-1 w-0 rounded-full bg-chord" />
         </div>
       </div>
+      {c.strumNow && (
+        <div className="mx-auto mt-3 flex w-full max-w-3xl flex-wrap items-end justify-between gap-3 px-6">
+          <div className="flex flex-col gap-1.5">
+            <span className="text-sm font-extrabold text-ink-soft">
+              {c.strumNow.once ? 'Once' : strumName(c.strumNow.name)}, {c.doc.meta.time ?? '4/4'}, {c.bpm} bpm
+            </span>
+            <StrumStrip pattern={c.strumNow.pattern} time={c.doc.meta.time} size={slots(c.strumNow.pattern) > 8 ? 'md' : 'lg'} lit={c.strokeLit} />
+          </div>
+          {c.strumNext && (
+            <div className={clsx('flex flex-col gap-1 rounded-2xl border-2 px-3 py-2', c.strumNext.once ? 'border-chord' : 'border-rule')}>
+              <span className="text-xs font-extrabold text-ink-soft">
+                Up next: {c.strumNext.once ? 'once, one bar' : strumName(c.strumNext.name)}
+              </span>
+              <StrumStrip pattern={c.strumNext.pattern} time={c.doc.meta.time} size="sm" />
+            </div>
+          )}
+        </div>
+      )}
       <div ref={ref} className="stage flex-1 overflow-y-auto">
         <div className="mx-auto max-w-3xl px-8 pb-[70vh] pt-[18vh]">
           <ChordTipContext.Provider value={stageTips}>

@@ -3,34 +3,34 @@ import { chordsOverLyricsToChordPro } from '@/lib/convert'
 import { mod12 } from '@/lib/music'
 import { tuningsFor } from '@/lib/tunings'
 
-// Importing from Ultimate Guitar: a bookmarklet reads the tab from the UG
-// page the user is looking at and opens Leadsheet's editor with it in the
-// URL fragment (which never reaches a server). Nothing is published until
-// the user reviews the draft and presses Publish.
+// Importing a tab: a bookmarklet reads it from the tab site page the user
+// is looking at and opens Leadsheet's editor with it in the URL fragment
+// (which never reaches a server). Nothing is published until the user
+// reviews the draft and presses Publish.
 
-/** What the bookmarklet sends: UG's own fields, lightly renamed. */
-export interface UGImport {
+/** What the bookmarklet sends: the page's own fields, lightly renamed. */
+export interface TabImport {
   v: 1
   url: string
   title: string
   artist: string
   /** "Chords", "Tabs", "Ukulele Chords", "Bass Tabs", … */
   type: string
-  /** The UG user who transcribed it. */
+  /** Who transcribed it there. */
   author: string
   capo: number
   key: string
   /** Space-separated string names, low to high: "E A D G B E". */
   tuning: string
   difficulty: string
-  /** UG markup: [ch]G[/ch] chords, [tab]…[/tab] blocks, [Verse] headers. */
+  /** Chord-tag markup: [ch]G[/ch] chords, [tab]…[/tab] blocks, [Verse] headers. */
   content: string
 }
 
 const IMPORT_PREFIX = '#import='
 
 /**
- * The bookmarklet. It runs on the UG page, so it's self-contained, and
+ * The bookmarklet. It runs on the tab's page, so it's self-contained, and
  * `origin` is baked in so it opens whichever Leadsheet it came from.
  */
 export function bookmarklet(origin: string): string {
@@ -38,7 +38,7 @@ export function bookmarklet(origin: string): string {
 let d;
 try{const s=window.UGAPP&&UGAPP.store;d=s&&s.page?s.page.data:JSON.parse(document.querySelector('.js-store').dataset.content).store.page.data}catch(e){}
 const t=d&&d.tab,v=d&&d.tab_view,c=v&&v.wiki_tab&&v.wiki_tab.content;
-if(!c){alert('Leadsheet: open a chords or tab page on Ultimate Guitar, then click this again.');return}
+if(!c){alert('Leadsheet: open a chords or tab page, then click this again.');return}
 const m=v.meta||{};
 const p={v:1,url:location.href,title:t.song_name||'',artist:t.artist_name||'',type:t.type||'',author:t.username||'',capo:m.capo||0,key:m.tonality||'',tuning:(m.tuning&&m.tuning.value)||'',difficulty:m.difficulty||'',content:c};
 window.open(${JSON.stringify(origin)}+'/new${IMPORT_PREFIX}'+btoa(unescape(encodeURIComponent(JSON.stringify(p)))),'_blank')
@@ -47,40 +47,40 @@ window.open(${JSON.stringify(origin)}+'/new${IMPORT_PREFIX}'+btoa(unescape(encod
 }
 
 /** Reads an import from a location hash, or null if there isn't one. */
-export function readImport(hash: string): UGImport | null {
+export function readImport(hash: string): TabImport | null {
   if (!hash.startsWith(IMPORT_PREFIX)) return null
   try {
     const json = decodeURIComponent(escape(atob(decodeURIComponent(hash.slice(IMPORT_PREFIX.length)))))
     const p = JSON.parse(json)
     if (p?.v !== 1 || typeof p.content !== 'string') return null
-    return p as UGImport
+    return p as TabImport
   } catch {
     return null
   }
 }
 
 /** A stable short key for an import's draft, so re-importing resumes it. */
-export function importDraftKey(p: UGImport): string {
+export function importDraftKey(p: TabImport): string {
   let h = 0
   for (const ch of p.url) h = (Math.imul(h, 31) + ch.charCodeAt(0)) | 0
   return `import:${(h >>> 0).toString(36)}`
 }
 
-/** UG markup → ChordPro. */
-export function ugToChordPro(content: string): string {
+/** Chord-tag markup → ChordPro. */
+export function tagMarkupToChordPro(content: string): string {
   const plain = content
     .replace(/\r\n?/g, '\n')
     // [tab] blocks pair a chord line with its lyric line (or hold real
     // tablature); without the tags they're chords-over-lyrics text.
     .replace(/\[\/?tab\]/g, '')
-    // Chord positions on UG are measured without the tags, so dropping
+    // Chord positions are measured without the tags, so dropping
     // them leaves each chord over the right syllable.
     .replace(/\[ch\]([^[]*?)\[\/ch\]/g, '$1')
   return chordsOverLyricsToChordPro(plain).replace(/\n{3,}/g, '\n\n').trim()
 }
 
-/** True for text in UG's [ch]…[/ch] markup. */
-export function looksLikeUGMarkup(text: string): boolean {
+/** True for text in [ch]…[/ch] chord-tag markup. */
+export function looksLikeTagMarkup(text: string): boolean {
   return /\[ch\][^[\n]+\[\/ch\]/.test(text)
 }
 
@@ -121,16 +121,14 @@ export function tuningId(value: string, kind = 'chords'): string {
 }
 
 /** An import as an editor draft, crediting the transcriber. */
-export function importToSheet(p: UGImport): SheetInput {
-  const credit = p.author
-    ? `Transcribed by ${p.author} on Ultimate Guitar: ${p.url}`
-    : `From Ultimate Guitar: ${p.url}`
+export function importToSheet(p: TabImport): SheetInput {
+  const credit = p.author ? `Transcribed by ${p.author}: ${p.url}` : `From ${p.url}`
   return {
     title: p.title.trim(),
     artist: p.artist.trim(),
     album: '',
     kind: KINDS[p.type.trim().toLowerCase()] ?? 'chords',
-    content: ugToChordPro(p.content),
+    content: tagMarkupToChordPro(p.content),
     key: p.key.trim(),
     capo: Math.max(0, Math.min(12, Math.round(Number(p.capo) || 0))),
     tuning: p.tuning ? tuningId(p.tuning, KINDS[p.type.trim().toLowerCase()] ?? 'chords') : 'standard',

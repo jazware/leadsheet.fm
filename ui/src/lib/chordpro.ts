@@ -1,4 +1,5 @@
 import { parseChord, type ChordSymbol } from '@/lib/music'
+import { parseStrumDirective, type StrumChange, type StrumPattern } from '@/lib/strum'
 
 // A ChordPro subset: inline [chords], {directives} (title, key, capo,
 // comments, chorus/verse/bridge/tab environments), # comments, and
@@ -15,6 +16,8 @@ export type Line =
   | { type: 'lyrics'; segments: Segment[] }
   | { type: 'comment'; text: string }
   | { type: 'blank' }
+  /** The strumming pattern changes here, mid-section. */
+  | { type: 'strum'; change: StrumChange }
 
 export interface Block {
   kind: 'verse' | 'chorus' | 'bridge' | 'tab' | 'plain' | 'section'
@@ -22,11 +25,17 @@ export interface Block {
   lines: Line[]
   /** Raw lines for tab blocks. */
   tab?: string[]
+  /** The strumming pattern this section switches to. */
+  strum?: StrumChange
 }
 
 export interface Doc {
   meta: Record<string, string>
   blocks: Block[]
+  /** The strumming pattern in use from the start, if the sheet has one. */
+  strum: StrumChange | null
+  /** Every strumming pattern in the sheet, named or not, in order. */
+  strums: { name: string | null; pattern: StrumPattern }[]
 }
 
 const DIRECTIVE_RE = /^\s*\{\s*([a-z_]+)\s*(?:[:\s]\s*(.*?))?\s*\}\s*$/i
@@ -46,6 +55,23 @@ export function parseChordPro(src: string): Doc {
   const blocks: Block[] = []
   let cur: Block = { kind: 'plain', label: null, lines: [] }
   let inEnv = false
+  // Strumming: patterns by name; the one in use from the start (set in the
+  // header, before any of the song); a change waiting for what it applies
+  // to (a section starting here, or else the next line).
+  const named = new Map<string, StrumPattern>()
+  const strums: Doc['strums'] = []
+  let strum: StrumChange | null = null
+  let started = false
+  let pending: StrumChange | null = null
+  const note = (name: string | null, pattern: StrumPattern) => {
+    if (!strums.some((d) => (name ? d.name === name : !d.name && d.pattern.source === pattern.source)))
+      strums.push({ name, pattern })
+  }
+  const flushStrum = () => {
+    if (!pending) return
+    cur.lines.push({ type: 'strum', change: pending })
+    pending = null
+  }
 
   const flush = () => {
     // Trim blank lines at the edges of a block.
@@ -56,6 +82,12 @@ export function parseChordPro(src: string): Doc {
   const open = (kind: Block['kind'], label: string | null) => {
     flush()
     cur = kind === 'tab' ? { kind, label, lines: [], tab: [] } : { kind, label, lines: [] }
+    // A switch just before a section belongs to the section.
+    if (pending && (label || kind === 'chorus' || kind === 'bridge')) {
+      cur.strum = pending
+      pending = null
+    }
+    started = true
   }
 
   for (const raw of src.replace(/\r\n?/g, '\n').split('\n')) {
@@ -63,6 +95,20 @@ export function parseChordPro(src: string): Doc {
     if (d) {
       const name = ALIASES[d[1].toLowerCase()] ?? d[1].toLowerCase()
       const value = d[2] ?? ''
+      if (name === 'x_strum') {
+        const s = parseStrumDirective(value)
+        const pattern = s?.pattern ?? (s?.name ? named.get(s.name) : undefined)
+        if (!s || !pattern) continue
+        if (s.name && s.pattern) named.set(s.name, s.pattern)
+        // (A one-bar "once" isn't one of the song's patterns.)
+        if (!s.once) note(s.name, pattern)
+        const change = { name: s.name, pattern, once: s.once }
+        if (started) pending = change
+        // In the header, the first pattern is in use from the start; a
+        // later named one only defines it (unless it's a switch).
+        else if (!s.once && (!strum || !s.pattern || !s.name)) strum = change
+        continue
+      }
       const env = /^(start|end)_of_([a-z]+)$/.exec(name)
       if (env) {
         const kind = (['chorus', 'verse', 'bridge', 'tab'].includes(env[2]) ? env[2] : 'section') as Block['kind']
@@ -74,6 +120,8 @@ export function parseChordPro(src: string): Doc {
           inEnv = false
         }
       } else if (name === 'comment') {
+        started = true
+        flushStrum()
         if (cur.kind === 'tab') cur.tab!.push(value)
         else cur.lines.push({ type: 'comment', text: value })
       } else if (name === 'chorus_ref') {
@@ -87,6 +135,7 @@ export function parseChordPro(src: string): Doc {
 
     if (cur.kind === 'tab') {
       cur.tab!.push(raw)
+      started = true
       continue
     }
     if (/^\s*#/.test(raw)) continue
@@ -104,10 +153,12 @@ export function parseChordPro(src: string): Doc {
       cur.lines.push({ type: 'blank' })
       continue
     }
+    started = true
+    flushStrum()
     cur.lines.push({ type: 'lyrics', segments: segments(raw) })
   }
   flush()
-  return { meta, blocks }
+  return { meta, blocks, strum, strums }
 }
 
 function segments(line: string): Segment[] {

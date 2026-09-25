@@ -3,15 +3,15 @@ import { parseChordPro } from '@/lib/chordpro'
 import {
   bookmarklet,
   importToSheet,
-  looksLikeUGMarkup,
+  looksLikeTagMarkup,
   readImport,
   tuningId,
-  ugToChordPro,
-  type UGImport,
-} from '@/lib/ultimateGuitar'
+  tagMarkupToChordPro,
+  type TabImport,
+} from '@/lib/tabImport'
 
-// A made-up sheet in UG's markup, as found in tab_view.wiki_tab.content.
-const UG = [
+// A made-up sheet in chord-tag markup, as found in tab_view.wiki_tab.content.
+const MARKUP = [
   '[Intro]',
   '[ch]G[/ch]   [ch]Cadd9[/ch]   [ch]D[/ch]  x2',
   '',
@@ -27,8 +27,8 @@ const UG = [
   'G|-2-------|[/tab]',
 ].join('\r\n')
 
-describe('ugToChordPro', () => {
-  const out = ugToChordPro(UG)
+describe('tagMarkupToChordPro', () => {
+  const out = tagMarkupToChordPro(MARKUP)
 
   it('puts chords inline over the right syllables', () => {
     expect(out).toContain('[G]Walking down the [C]harbor road')
@@ -45,7 +45,7 @@ describe('ugToChordPro', () => {
     expect(out).toMatch(/\{start_of_tab\}\ne\|-----0---\|\nB\|---1---1-\|\nG\|-2-------\|\n\{end_of_tab\}/)
   })
 
-  it('leaves no UG markup behind and parses cleanly', () => {
+  it('leaves no markup behind and parses cleanly', () => {
     expect(out).not.toMatch(/\[\/?(ch|tab)\]|\r/)
     const doc = parseChordPro(out)
     expect(doc.blocks.map((b) => b.label ?? b.kind)).toEqual(['Intro', 'Verse 1', 'Riff', 'tab'])
@@ -53,7 +53,7 @@ describe('ugToChordPro', () => {
 })
 
 describe('tuningId', () => {
-  it('maps UG tuning strings by pitch class', () => {
+  it('maps tuning strings by pitch class', () => {
     expect(tuningId('E A D G B E')).toBe('standard')
     expect(tuningId('Eb Ab Db Gb Bb Eb')).toBe('eb-standard')
     expect(tuningId('D# G# C# F# A# D#')).toBe('eb-standard')
@@ -70,9 +70,9 @@ describe('tuningId', () => {
 })
 
 describe('bookmarklet round trip', () => {
-  const payload: UGImport = {
+  const payload: TabImport = {
     v: 1,
-    url: 'https://tabs.ultimate-guitar.com/tab/someone/some-song-chords-1',
+    url: 'https://tabs.example.com/tab/someone/some-song-chords-1',
     title: 'Some Song',
     artist: 'Sömeone', // non-ASCII survives the base64 hop
     type: 'Ukulele Chords',
@@ -81,7 +81,7 @@ describe('bookmarklet round trip', () => {
     key: 'Am',
     tuning: 'E A D G B E',
     difficulty: 'novice',
-    content: UG,
+    content: MARKUP,
   }
 
   it('builds a javascript: URL that opens this origin', () => {
@@ -98,11 +98,11 @@ describe('bookmarklet round trip', () => {
     expect(readImport('#import=not-base64!')).toBeNull()
   })
 
-  it('maps UG fields onto a draft and credits the transcriber', () => {
+  it('maps the page fields onto a draft and credits the transcriber', () => {
     const sheet = importToSheet(payload)
     expect(sheet).toMatchObject({ title: 'Some Song', artist: 'Sömeone', kind: 'ukulele', key: 'Am', capo: 3, tuning: 'standard', difficulty: 'beginner' })
-    expect(sheet.description).toBe(`Transcribed by strummer42 on Ultimate Guitar: ${payload.url}`)
-    expect(looksLikeUGMarkup(payload.content)).toBe(true)
-    expect(looksLikeUGMarkup('[G]plain chordpro')).toBe(false)
+    expect(sheet.description).toBe(`Transcribed by strummer42: ${payload.url}`)
+    expect(looksLikeTagMarkup(payload.content)).toBe(true)
+    expect(looksLikeTagMarkup('[G]plain chordpro')).toBe(false)
   })
 })

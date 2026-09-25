@@ -41,7 +41,7 @@ build:
 backfill:
     go run ./cmd/leadsheet --backfill
 
-# Run the UI's unit tests (ChordPro and Ultimate Guitar conversion)
+# Run the UI's unit tests (ChordPro and chord-tag markup conversion)
 ui-test:
     cd ui && pnpm install && pnpm test
 
