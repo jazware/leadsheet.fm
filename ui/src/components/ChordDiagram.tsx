@@ -4,15 +4,13 @@ import { ChordSoundContext, useVoicing } from '@/components/Voicings'
 import { fretsKey } from '@/lib/guitar'
 import { audioStarted, strum } from '@/lib/pluck'
 import { noteName, pretty, type ChordSymbol } from '@/lib/music'
-import { STANDARD_STRINGS } from '@/lib/tunings'
+import { instrumentFor, STANDARD_STRINGS, TUNINGS } from '@/lib/tunings'
 
-const STRINGS = 6
 const FRETS = 5
 const W = 72
 const H = 88
 const PAD_X = 10
 const TOP = 18
-const GAP_X = (W - PAD_X * 2) / (STRINGS - 1)
 const GAP_Y = (H - TOP - 6) / FRETS
 
 /**
@@ -36,7 +34,7 @@ export function ChordDiagram({
 }) {
   const { voicing: v, index, shapes, step: stepVoicing, own } = useVoicing(chord, strings)
   const sound = useContext(ChordSoundContext)
-  const play = () => v && sound && strum(v.frets, sound.strings, sound.capo)
+  const play = () => v && sound && strum(v.frets, sound.strings, sound.capo, sound.instrument)
   // Once the reader has heard a chord, stepping to another shape plays it,
   // so shapes can be compared by ear.
   const stepped = useRef(false)
@@ -50,12 +48,16 @@ export function ChordDiagram({
     stepped.current = false
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [heard])
-  const standard = strings.every((s, i) => s === STANDARD_STRINGS[i])
+  // Name the strings under the box unless it's the instrument's standard tuning.
+  const instrument = instrumentFor(strings)
+  const usual = TUNINGS.find((t) => t.instrument === instrument)!.strings
+  const standard = strings.length === usual.length && strings.every((s, i) => s === usual[i])
+  const gap = (W - PAD_X * 2) / (strings.length - 1)
   const fretted = v?.frets.filter((f): f is number => f !== null && f > 0) ?? []
   const maxFret = fretted.length ? Math.max(...fretted) : 0
   // Shift the window up the neck when the shape doesn't fit first position.
   const base = maxFret > FRETS ? Math.min(...fretted) : 1
-  const sx = (s: number) => PAD_X + s * GAP_X
+  const sx = (s: number) => PAD_X + s * gap
   const fy = (f: number) => TOP + (f - base + 0.5) * GAP_Y
 
   const box = v && (
@@ -76,7 +78,7 @@ export function ChordDiagram({
         <line key={`f${i}`} x1={PAD_X} x2={W - PAD_X} y1={TOP + i * GAP_Y} y2={TOP + i * GAP_Y}
           stroke="currentColor" strokeOpacity={0.35} strokeWidth={1} />
       ))}
-      {Array.from({ length: STRINGS }, (_, s) => (
+      {strings.map((_, s) => (
         <line key={`s${s}`} x1={sx(s)} x2={sx(s)} y1={TOP} y2={TOP + FRETS * GAP_Y}
           stroke="currentColor" strokeOpacity={0.55} strokeWidth={1} />
       ))}

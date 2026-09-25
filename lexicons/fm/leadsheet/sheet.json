@@ -82,8 +82,12 @@
               "open-d",
               "open-g",
               "open-e",
-              "open-c"
-            ]
+              "open-c",
+              "low-g",
+              "baritone",
+              "five-string"
+            ],
+            "description": "How the instrument (see `kind`) is tuned. Unset or 'standard' is that instrument's standard: EADGBE guitar, GCEA ukulele, EADG bass."
           },
           "difficulty": {
             "type": "string",
@@ -156,7 +160,7 @@
             "minimum": -1,
             "maximum": 24
           },
-          "description": "Fret for each string, lowest-pitched first, in the sheet's tuning and relative to its capo: -1 = not played, 0 = open."
+          "description": "Fret for each string, in chart order (low E side first on guitar and bass, G first on ukulele), in the sheet's tuning and relative to its capo: -1 = not played, 0 = open."
         }
       }
     }

@@ -108,35 +108,56 @@ function LineView({ line, options, now }: { line: Line; options: ViewOptions; no
   // Each chord rides on the first word after it; the rest of the words
   // are separate items so long lines wrap between words. Every item
   // reserves the chord row, so a wrapped row's chords don't land on the
-  // row above.
+  // row above. A chord in the middle of a word ("fol[G]low") splits it
+  // into two items, so those are grouped back up: lines never break
+  // mid-word.
   const row = hasChords ? 'pt-[1.1em]' : ''
+  const words: { key: string; pieces: React.ReactNode[] }[] = []
+  line.segments.forEach((s, i) => {
+    const [head = '', ...rest] = s.text.split(/(?<= )(?=\S)/)
+    const l = label(s)
+    const prev = line.segments[i - 1]?.text ?? ''
+    const midWord = i > 0 && /\S$/.test(prev) && /^\S/.test(head)
+    const first = (
+      <span key={i} className={clsx('relative inline-block whitespace-pre', row)}>
+        {l !== null && (
+          <>
+            <span data-now={s === now || undefined} className={clsx('absolute left-0 top-0', chordCls)}>
+              {tip(s)}
+            </span>
+            {/* Keeps room for the chord when the syllable under it is shorter. */}
+            <span aria-hidden className={clsx('invisible block h-0 overflow-hidden pr-[0.45em]', chordCls)}>
+              {l}
+            </span>
+          </>
+        )}
+        {head || '\u00a0'}
+      </span>
+    )
+    if (midWord && words.length) words[words.length - 1].pieces.push(first)
+    else words.push({ key: String(i), pieces: [first] })
+    rest.forEach((w, j) =>
+      words.push({
+        key: `${i}.${j}`,
+        pieces: [
+          <span key={`${i}.${j}`} className={clsx('whitespace-pre', row)}>
+            {w}
+          </span>,
+        ],
+      }),
+    )
+  })
   return (
     <div data-line className="mb-[0.35em] flex flex-wrap items-end">
-      {line.segments.flatMap((s, i) => {
-        const [head = '', ...rest] = s.text.split(/(?<= )(?=\S)/)
-        const l = label(s)
-        return [
-          <span key={i} className={clsx('relative inline-block whitespace-pre', row)}>
-            {l !== null && (
-              <>
-                <span data-now={s === now || undefined} className={clsx('absolute left-0 top-0', chordCls)}>
-                  {tip(s)}
-                </span>
-                {/* Keeps room for the chord when the syllable under it is shorter. */}
-                <span aria-hidden className={clsx('invisible block h-0 overflow-hidden pr-[0.45em]', chordCls)}>
-                  {l}
-                </span>
-              </>
-            )}
-            {head || '\u00a0'}
-          </span>,
-          ...rest.map((w, j) => (
-            <span key={`${i}.${j}`} className={clsx('whitespace-pre', row)}>
-              {w}
-            </span>
-          )),
-        ]
-      })}
+      {words.map((w) =>
+        w.pieces.length === 1 ? (
+          w.pieces[0]
+        ) : (
+          <span key={w.key} className="inline-flex items-end">
+            {w.pieces}
+          </span>
+        ),
+      )}
     </div>
   )
 }

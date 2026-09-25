@@ -8,7 +8,7 @@ import { chordsIn, parseChordPro, type Doc } from '@/lib/chordpro'
 import { chordsOverLyricsToChordPro, looksLikeChordsOverLyrics } from '@/lib/convert'
 import { importDraftKey, importToSheet, looksLikeUGMarkup, readImport, ugToChordPro, type UGImport } from '@/lib/ultimateGuitar'
 import { forgetSheet } from '@/lib/recent'
-import { TUNINGS, getTuning, shapeStrings } from '@/lib/tunings'
+import { getTuning, instrumentOf, shapeStrings, tuningsFor } from '@/lib/tunings'
 import { useViewer } from '@/hooks/queries'
 import { usePref } from '@/hooks/usePref'
 import { useLogin } from '@/components/login'
@@ -160,8 +160,8 @@ function Editor({
 
   const set = <K extends keyof SheetInput>(k: K, v: SheetInput[K]) => setForm((f) => ({ ...f, [k]: v }))
   const doc = useMemo(() => parseChordPro(form.content || EXAMPLE), [form.content])
-  const guitar = form.kind === 'chords' || form.kind === 'tab'
-  const strings = shapeStrings(getTuning(form.tuning))
+  const tuning = getTuning(form.tuning, form.kind)
+  const strings = shapeStrings(tuning)
   // Stepping through a chord's shapes in the editor (preview tooltips or
   // the Shapes list) sets the sheet's own shape for it.
   const shapes = useMemo(
@@ -194,7 +194,7 @@ function Editor({
     const input: SheetInput = {
       ...form,
       tags: tagText.split(',').map((t) => t.trim()).filter(Boolean),
-      voicings: guitar ? liveVoicings(form.voicings, doc) : [],
+      voicings: liveVoicings(form.voicings, doc),
       forkOf: mode === 'fork' ? { uri: source!.uri, cid: source!.cid } : undefined,
     }
     try {
@@ -309,7 +309,10 @@ function Editor({
                 type="button"
                 role="radio"
                 aria-checked={form.kind === k}
-                onClick={() => set('kind', k)}
+                onClick={() =>
+                  // A tuning the new instrument doesn't have goes back to its standard.
+                  setForm((f) => ({ ...f, kind: k, tuning: tuningsFor(k).some((t) => t.id === f.tuning) ? f.tuning : 'standard' }))
+                }
                 className={clsx(
                   'h-10 flex-1 rounded-full text-sm font-extrabold',
                   form.kind === k ? 'bg-ink text-bg' : 'text-ink-soft hover:text-ink',
@@ -339,7 +342,7 @@ function Editor({
         <div className="grid grid-cols-2 gap-3">
           <Field label="Tuning">
             <select className="field" value={form.tuning} onChange={(e) => set('tuning', e.target.value)}>
-              {TUNINGS.map((t) => (
+              {tuningsFor(form.kind).map((t) => (
                 <option key={t.id} value={t.id}>
                   {t.name}
                 </option>
@@ -442,13 +445,13 @@ function Editor({
 
         <div className={clsx('min-w-0', tab !== 'preview' && 'hidden lg:block')}>
           <SheetShapesProvider value={shapes}>
-            <ChordSoundContext.Provider value={guitar ? { strings: getTuning(form.tuning).strings, capo: form.capo } : null}>
-              {guitar && form.content.trim() && (
+            <ChordSoundContext.Provider value={{ strings: tuning.strings, capo: form.capo, instrument: instrumentOf(form.kind) }}>
+              {form.content.trim() && (
                 <ShapesEditor doc={doc} strings={strings} count={liveVoicings(form.voicings, doc).length} />
               )}
               <div className="label">Preview{!form.content && ' of the example'}</div>
               <div className={clsx('rounded-[20px] border-2 border-surface p-5', !form.content && 'opacity-60')}>
-                <ChordTipContext.Provider value={guitar ? { strings } : null}>
+                <ChordTipContext.Provider value={{ strings }}>
                   <SheetView doc={doc} options={{ shift: 0, flats: false, simplify: false, fontSize: 18 }} />
                 </ChordTipContext.Provider>
               </div>
@@ -514,9 +517,8 @@ function liveVoicings(voicings: SheetVoicing[], doc: Doc): SheetVoicing[] {
  * (for the sheet's own chords, only picks made on that sheet).
  */
 function withPicks(input: SheetInput, uri: string): SheetInput {
-  if (input.kind !== 'chords' && input.kind !== 'tab') return input
   const picks = readPicks()
-  const strings = shapeStrings(getTuning(input.tuning))
+  const strings = shapeStrings(getTuning(input.tuning, input.kind))
   const own = sheetShapes(input.voicings)
   const voicings = [...input.voicings]
   for (const c of chordsIn(parseChordPro(input.content))) {
@@ -563,8 +565,8 @@ function ShapesEditor({ doc, strings, count }: { doc: Doc; strings: number[]; co
       {open && (
         <div id="editor-shapes" className="px-4 pb-4">
           <p className="mb-3 text-sm font-semibold text-ink-soft">
-            How you play each chord, saved with the sheet. Step through the arrows or type frets, lowest string first
-            (x = not played). A dot marks a shape you've set. Click a box to hear it.
+            How you play each chord, saved with the sheet. Step through the arrows or type frets, one per string as
+            the box draws them, left to right (x = not played). A dot marks a shape you've set. Click a box to hear it.
           </p>
           <div className="flex flex-wrap gap-3">
             {chords.map((c) => (

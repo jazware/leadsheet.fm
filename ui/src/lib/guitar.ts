@@ -1,5 +1,5 @@
 import { mod12, type Chord, type Quality } from '@/lib/music'
-import { STANDARD_STRINGS } from '@/lib/tunings'
+import { instrumentFor, STANDARD_STRINGS } from '@/lib/tunings'
 
 /** Fret per string, lowest string first; null = not played, 0 = open. */
 export type Frets = (number | null)[]
@@ -106,15 +106,59 @@ function place(shape: Frets, rootFret: number, rootString: number): Voicing | nu
  * above; any other tuning searches the fretboard.
  */
 export function voicings(chord: Chord, strings: number[] = STANDARD_STRINGS): Voicing[] {
-  const standard = strings.every((s, i) => s === STANDARD_STRINGS[i])
-  if (standard) return standardVoicings(chord)
+  if (isStandardGuitar(strings)) return standardVoicings(chord)
   const key = `${strings.join(',')}|${chord.root}:${chord.quality}`
   let found = searchCache.get(key)
   if (!found) {
-    found = searchVoicings(chord, strings)
+    found = instrumentFor(strings) === 'bass' ? bassVoicings(chord, strings) : searchVoicings(chord, strings)
+    const chart = strings.every((s, i) => s === UKULELE[i]) ? UKULELE_CHART[`${chord.root}:${chord.quality}`] : undefined
+    if (chart) {
+      const key = chart.join(',')
+      found = [voicingFromFrets(chart), ...found.filter((v) => v.frets.join(',') !== key)]
+    }
     searchCache.set(key, found)
   }
   return found
+}
+
+// Ukulele shapes charts print where the search's easiest pick differs
+// (it prefers Em 0402, say). Standard GCEA tuning only.
+const UKULELE_CHART: Record<string, Frets> = {
+  '4:min': [0, 4, 3, 2],
+  '4:maj': [4, 4, 4, 2],
+  '11:min': [4, 2, 2, 2],
+  '11:maj': [4, 3, 2, 2],
+  '2:7': [2, 2, 2, 3],
+}
+const UKULELE = [67, 60, 64, 69]
+
+const isStandardGuitar = (strings: number[]) =>
+  strings.length === STANDARD_STRINGS.length && strings.every((s, i) => s === STANDARD_STRINGS[i])
+
+/**
+ * Bass shapes: root, fifth and octave across three strings (what a
+ * bassist reads a chord chart for), lowest on the neck first.
+ */
+function bassVoicings(chord: Chord, strings: number[]): Voicing[] {
+  const fifth = TONES[chord.quality].find((i) => i === 7 || i === 6 || i === 8) ?? 7
+  const out: Voicing[] = []
+  for (let s = 0; s + 2 < strings.length; s++) {
+    for (let r = 0; r <= 12; r++) {
+      const root = strings[s] + r
+      if (mod12(root) !== chord.root) continue
+      const f5 = root + fifth - strings[s + 1]
+      const f8 = root + 12 - strings[s + 2]
+      const fretted = [r, f5, f8].filter((f) => f > 0)
+      if (f5 < 0 || f8 < 0 || f5 > 15 || f8 > 15) continue
+      if (fretted.length && Math.max(...fretted) - Math.min(...fretted) > 3) continue
+      const frets: Frets = strings.map(() => null)
+      frets[s] = r
+      frets[s + 1] = f5
+      frets[s + 2] = f8
+      out.push({ frets, open: Math.max(r, f5, f8) <= 4 })
+    }
+  }
+  return out.sort((a, b) => lowestFret(a) - lowestFret(b))
 }
 
 // Searching takes ~1 ms a chord and capo suggestions ask for many.
@@ -131,7 +175,12 @@ export function shapesFor(chord: Chord, strings: number[] = STANDARD_STRINGS): V
   const key = `shapes|${strings.join(',')}|${chord.root}:${chord.quality}`
   let out = searchCache.get(key)
   if (out) return out
-  const standard = strings.every((s, i) => s === STANDARD_STRINGS[i])
+  if (instrumentFor(strings) === 'bass') {
+    out = voicings(chord, strings).slice(0, MAX_SHAPES)
+    searchCache.set(key, out)
+    return out
+  }
+  const standard = isStandardGuitar(strings)
   const head = standard ? standardVoicings(chord) : voicings(chord, strings).slice(0, 1)
   const seen = new Set(head.map((v) => v.frets.join(',')))
   let searched = searchCache.get(`std|${chord.root}:${chord.quality}`)
@@ -330,6 +379,7 @@ const MAX_FRET = 12
  * across the lowest fretted fret counts as one).
  */
 function searchVoicings(chord: Chord, strings: number[]): Voicing[] {
+  const ukulele = instrumentFor(strings) === 'ukulele'
   const tones = new Set(chordTones(chord))
   const required = TONES[chord.quality]
     .filter((i) => !(i === 7 && TONES[chord.quality].length >= 4))
@@ -347,7 +397,7 @@ function searchVoicings(chord: Chord, strings: number[]): Voicing[] {
     const pick: (number | null)[] = []
     const walk = (s: number) => {
       if (s === strings.length) {
-        const v = judge(pick, strings, chord.root, required)
+        const v = judge(pick, strings, chord.root, required, ukulele)
         if (v) {
           const key = v.v.frets.join(',')
           const prev = found.get(key)
@@ -371,13 +421,16 @@ function judge(
   strings: number[],
   root: number,
   required: number[],
+  ukulele = false,
 ): { v: Voicing; score: number } | null {
   const sounding = frets.flatMap((f, s) => (f === null ? [] : [s]))
-  if (sounding.length < 4) return null
+  // Ukulele chords ring every string, and the root needn't be lowest (the
+  // G string is re-entrant, so "lowest" isn't even the first string).
+  if (sounding.length < (ukulele ? strings.length : 4)) return null
   const first = sounding[0]
   const last = sounding[sounding.length - 1]
   if (last - first + 1 !== sounding.length) return null // muted string in the middle
-  if (mod12(strings[first] + frets[first]!) !== root) return null
+  if (!ukulele && mod12(strings[first] + frets[first]!) !== root) return null
 
   const pcs = new Set(sounding.map((s) => mod12(strings[s] + frets[s]!)))
   if (!required.every((t) => pcs.has(t))) return null

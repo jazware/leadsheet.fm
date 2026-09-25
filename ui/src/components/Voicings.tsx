@@ -3,6 +3,7 @@ import { usePref } from '@/hooks/usePref'
 import { fretsKey, fromRecordFrets, shapesFor, voicingFromFrets, type Frets, type Voicing } from '@/lib/guitar'
 import { parseChord, type ChordSymbol } from '@/lib/music'
 import type { SheetVoicing } from '@/lib/api'
+import type { Instrument } from '@/lib/tunings'
 
 type ChordLike = Pick<ChordSymbol, 'root' | 'quality' | 'suffix'>
 
@@ -52,7 +53,7 @@ export const pickKey = (strings: number[], c: ChordLike, scope?: string) =>
  * `edit` is set and stepping through shapes changes the sheet instead of
  * the reader's picks.
  */
-interface SheetShapes {
+export interface SheetShapes {
   shapes: Map<string, Frets>
   /** Keeps the reader's picks for this sheet's own chords apart from their global ones. */
   scope: string
@@ -80,6 +81,35 @@ export function SheetShapesProvider({ value, children }: { value: SheetShapes | 
   return <SheetShapesContext.Provider value={value}>{children}</SheetShapesContext.Provider>
 }
 
+/** A chord's shapes, the sheet's own first when it has one. */
+function shapesList(chord: ChordLike, strings: number[], own: Frets | undefined): Voicing[] {
+  const generated = chord.quality ? shapesFor({ root: chord.root, quality: chord.quality }, strings) : []
+  if (!own) return generated
+  const ownKey = fretsKey(own)
+  const mine = generated.find((v) => fretsKey(v.frets) === ownKey)
+  return [mine ?? voicingFromFrets(own), ...generated.filter((v) => fretsKey(v.frets) !== ownKey)]
+}
+
+/**
+ * The shape a chord box shows for this chord: the reader's pick, else the
+ * sheet's own, else the easiest. The same answer as useVoicing, for code
+ * outside the boxes (playing the whole chart).
+ */
+export function resolveVoicing(
+  chord: ChordLike,
+  strings: number[],
+  sheet: SheetShapes | null,
+  picks: Record<string, string>,
+): Voicing | undefined {
+  const own = sheet?.shapes.get(chordKey(chord))
+  const shapes = shapesList(chord, strings, own)
+  const pick = sheet?.edit ? undefined : picks[pickKey(strings, chord, own ? sheet!.scope : undefined)]
+  return shapes.find((v) => pick !== undefined && fretsKey(v.frets) === pick) ?? shapes[0]
+}
+
+/** The reader's picks (see VoicingProvider). */
+export const usePicks = () => useContext(PickContext).picks
+
 /**
  * A chord's voicings (the sheet's own first, if it has one), the one to
  * show, and a way to step through them.
@@ -91,14 +121,13 @@ export function useVoicing(chord: ChordLike | null, strings: number[]) {
   const own = chord ? sheet?.shapes.get(key) : undefined
   const quality = chord?.quality ?? null
   const root = chord?.root ?? 0
+  const suffix = chord?.suffix ?? ''
   const ownKey = own ? fretsKey(own) : ''
-  const shapes: Voicing[] = useMemo(() => {
-    const generated = quality ? shapesFor({ root, quality }, strings) : []
-    if (!ownKey) return generated
-    const mine = generated.find((v) => fretsKey(v.frets) === ownKey)
-    return [mine ?? voicingFromFrets(own!), ...generated.filter((v) => fretsKey(v.frets) !== ownKey)]
+  const shapes: Voicing[] = useMemo(
+    () => (chord ? shapesList({ root, quality, suffix }, strings, own) : []),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [quality, root, strings.join(','), ownKey])
+    [quality, root, suffix, strings.join(','), ownKey],
+  )
 
   const storeKey = chord ? pickKey(strings, chord, own ? sheet!.scope : undefined) : ''
   const picked = sheet?.edit ? -1 : shapes.findIndex((v) => fretsKey(v.frets) === picks[storeKey])
@@ -122,4 +151,4 @@ export function useVoicing(chord: ChordLike | null, strings: number[]) {
  * strings (half-step-down charts are drawn with standard shapes) and the
  * capo the reader has on. Without it, boxes are silent.
  */
-export const ChordSoundContext = createContext<{ strings: number[]; capo: number } | null>(null)
+export const ChordSoundContext = createContext<{ strings: number[]; capo: number; instrument: Instrument } | null>(null)

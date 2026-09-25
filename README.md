@@ -36,6 +36,19 @@ and difficulty, credits the transcriber in the notes, and keeps it as a
 draft until the user publishes. Pasting UG markup or chords-over-lyrics
 text into the editor converts too. `just ui-test` covers the conversion.
 
+## Instruments
+
+A sheet's `kind` picks the instrument: chords and tab are guitar, then
+ukulele and bass. Each has its own tunings (`ui/src/lib/tunings.ts`;
+"standard" or unset is the instrument's standard: EADGBE, GCEA, EADG) and
+its own shapes: guitar's hand-checked shapes plus a fretboard search;
+ukulele from the same search with ukulele rules (every string rings, the
+root needn't be lowest, as the G string is re-entrant) plus the chart
+shapes where the easiest search result isn't what charts print; bass as
+root, fifth and octave. Playing sounds like the instrument: a softer
+pluck for nylon ukulele strings, and a bass line (root, root-root, fifth,
+octave) instead of a strum.
+
 ## Chord shapes
 
 Hovering (or tapping) a chord shows its box; the arrows under it, or ←/→
@@ -57,6 +70,12 @@ Clicking a chord box strums it (`ui/src/lib/pluck.ts`): Karplus-Strong
 plucked strings in Web Audio, in tune to a few cents, at the sheet's real
 tuning plus the reader's capo. Once something has played, stepping to
 another shape plays that one too, to compare them by ear.
+
+"Hear the chords" (sidebar, the phone's text-size panel, stage mode) plays
+the whole chart through with the shapes the boxes show: a bar of "down,
+down-up, up-down-up" per chord at a set tempo, queued on the audio clock,
+lighting each chord up and scrolling along like play-along. The sheet
+doesn't say how long each chord lasts, so every chord gets a bar.
 
 ## Play along
 

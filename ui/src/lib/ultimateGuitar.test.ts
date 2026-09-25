@@ -60,6 +60,12 @@ describe('tuningId', () => {
     expect(tuningId('D A D G B E')).toBe('drop-d')
     expect(tuningId('D A D G A D')).toBe('dadgad')
     expect(tuningId('B E A D F# B')).toBe('standard') // unknown → standard
+    expect(tuningId('G C E A', 'ukulele')).toBe('standard')
+    expect(tuningId('D G B E', 'ukulele')).toBe('baritone')
+    expect(tuningId('E A D G', 'bass')).toBe('standard')
+    expect(tuningId('B E A D G', 'bass')).toBe('five-string')
+    expect(tuningId('D A D G', 'bass')).toBe('drop-d')
+    expect(tuningId('D A D G', 'chords')).toBe('standard') // a bass tuning on a guitar sheet
   })
 })
 

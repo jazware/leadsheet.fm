@@ -1,11 +1,11 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import { clsx } from 'clsx'
-import { ArrowLeft, Bookmark, GitFork, Maximize2, Mic, MicOff, Minus, Pause, Pencil, Play, Plus, Printer, Type, X } from 'lucide-react'
+import { ArrowLeft, Bookmark, GitFork, Maximize2, Mic, MicOff, Minus, Pause, Pencil, Play, Plus, Printer, Square, Type, Volume2, X } from 'lucide-react'
 import { KIND_LABEL, sheetPath, type SheetPage as SheetPageData } from '@/lib/api'
 import { chordsIn, parseChordPro, type Segment } from '@/lib/chordpro'
 import { keyText, keyUsesFlats, mod12, noteName, parseKey, pretty, simplifyQuality, type Quality } from '@/lib/music'
-import { getTuning, isStandardShapes, shapeStrings } from '@/lib/tunings'
+import { getTuning, instrumentOf, isStandardShapes, shapeStrings } from '@/lib/tunings'
 import { rememberSheet } from '@/lib/recent'
 import { useSheet, useSheetActions, useViewer } from '@/hooks/queries'
 import { usePref } from '@/hooks/usePref'
@@ -20,7 +20,9 @@ import { fmtDate } from '@/lib/format'
 import { useTitle } from '@/hooks/useTitle'
 import { usePlayAlong, type PlayAlongState } from '@/listen/usePlayAlong'
 import { btcChord } from '@/listen/btc'
-import { ChordSoundContext, SheetShapesProvider, sheetShapes } from '@/components/Voicings'
+import { ChordSoundContext, resolveVoicing, SheetShapesProvider, sheetShapes, usePicks } from '@/components/Voicings'
+import { playThrough } from '@/lib/pluck'
+import { playAlongChords } from '@/listen/sheet'
 
 export function SheetPage() {
   const { actor = '', rkey = '' } = useParams()
@@ -72,7 +74,50 @@ function useSheetControls(page: SheetPageData) {
     [sheet.capo, transpose],
   )
   const play = usePlayAlong(doc, prior)
-  const now = play.state.status === 'listening' ? play.state.now : null
+
+  // The author's own chord shapes, while the chords are shown as written
+  // (moved, they'd be different shapes).
+  const own = useMemo(() => sheetShapes(sheet.voicings), [sheet.voicings])
+  const shapes = useMemo(
+    () => (shift === 0 && own.size ? { shapes: own, scope: sheet.uri } : null),
+    [shift, own, sheet.uri],
+  )
+  // Chord boxes and the play-through sound as the reader would play them:
+  // their capo, the real tuning.
+  const tuning = getTuning(sheet.tuning, sheet.kind)
+  const instrument = instrumentOf(sheet.kind)
+  const sound = useMemo(() => ({ strings: tuning.strings, capo, instrument }), [tuning, capo, instrument])
+  // Bass players don't use a capo, so there's no capo control for them.
+  const capoable = instrument !== 'bass'
+
+  // Hearing the whole chart: the shapes the boxes show, each chord a bar.
+  const picks = usePicks()
+  const [bpm, setBpm] = usePref('bpm', 90)
+  const [hearing, setHearing] = useState<number | null>(null)
+  const stopHearing = useRef<(() => void) | null>(null)
+  const sequence = useMemo(() => playAlongChords(doc).segments, [doc])
+  const hear = (from = 0, tempo = bpm) => {
+    stopHearing.current?.()
+    const strings = shapeStrings(tuning)
+    const frets = sequence.map((seg) => {
+      const c = seg.chord!
+      const shown = { ...c, root: mod12(c.root + shift), quality: simplify && c.quality ? simplifyQuality(c.quality) : c.quality }
+      return resolveVoicing(shown, strings, shapes, picks)?.frets ?? null
+    })
+    stopHearing.current = playThrough(frets, sound.strings, sound.capo, tempo, setHearing, () => {
+      stopHearing.current = null
+      setHearing(null)
+    }, from, instrument)
+    setHearing(from)
+  }
+  const silence = () => {
+    stopHearing.current?.()
+    stopHearing.current = null
+    setHearing(null)
+  }
+  useEffect(() => () => stopHearing.current?.(), [])
+
+  const now = play.state.status === 'listening' ? play.state.now : hearing !== null ? sequence[hearing] ?? null : null
 
   return {
     doc, chords, options, flats,
@@ -80,14 +125,31 @@ function useSheetControls(page: SheetPageData) {
     toggleAccidentals: () => setAccidentals(flats ? 'sharps' : 'flats'),
     fontSize, setFontSize, speed, setSpeed, scrolling, setScrolling, stage, setStage,
     soundingKey, shapeKey,
-    play, now,
+    play, now, shapes, sound, capoable,
+    hearing: hearing !== null, bpm,
+    toggleHearing: () => {
+      if (hearing !== null) return silence()
+      play.stop()
+      setScrolling(false)
+      hear()
+    },
+    // A new tempo takes over from the chord that's playing.
+    stepBpm: (d: number) => {
+      const next = Math.max(40, Math.min(200, bpm + d * 5))
+      setBpm(next)
+      if (hearing !== null) hear(hearing, next)
+    },
     togglePlayAlong: () => {
       if (play.active) return play.stop()
+      silence()
       setScrolling(false)
       void play.start()
     },
     toggleScrolling: () => {
-      if (!scrolling) play.stop()
+      if (!scrolling) {
+        play.stop()
+        silence()
+      }
       setScrolling(!scrolling)
     },
     // -5..+6 semitones, wrapping around.
@@ -101,25 +163,16 @@ function SheetScreen({ page, actor }: { page: SheetPageData; actor: string }) {
   const { sheet } = page
   useTitle(`${sheet.title} by ${sheet.artist}`)
   const c = useSheetControls(page)
-  const tuning = getTuning(sheet.tuning)
-  const guitar = sheet.kind === 'chords' || sheet.kind === 'tab'
+  const tuning = getTuning(sheet.tuning, sheet.kind)
 
   useEffect(() => rememberSheet(sheet), [sheet])
   useAutoScroll(c.scrolling && !c.stage, c.speed, null, () => c.setScrolling(false))
-  useWakeLock(c.scrolling || c.stage || c.play.active)
+  useWakeLock(c.scrolling || c.stage || c.play.active || c.hearing)
   const sheetRef = useRef<HTMLDivElement>(null)
   useFollowScroll(c.now, sheetRef, null, !c.stage)
-  // The author's own chord shapes, while the chords are shown as written
-  // (moved, they'd be different shapes).
-  const own = useMemo(() => sheetShapes(sheet.voicings), [sheet.voicings])
-  const shapes = useMemo(
-    () => (c.options.shift === 0 && own.size ? { shapes: own, scope: sheet.uri } : null),
-    [c.options.shift, own, sheet.uri],
-  )
-  // Clicking a chord box plays it as the reader would: their capo, the real tuning.
-  const sound = useMemo(() => ({ strings: tuning.strings, capo: c.capo }), [tuning, c.capo])
+  const { shapes, sound } = c
 
-  const diagrams = guitar && c.chords.length > 0 && (
+  const diagrams = c.chords.length > 0 && (
     <div className="-mx-5 flex gap-2 overflow-x-auto px-5 pb-1 lg:mx-0 lg:grid lg:grid-cols-3 lg:overflow-visible lg:px-0">
       {c.chords.map((ch, i) => (
         <ChordDiagram
@@ -140,7 +193,7 @@ function SheetScreen({ page, actor }: { page: SheetPageData; actor: string }) {
 
   return (
     <SheetShapesProvider value={shapes}>
-      <ChordSoundContext.Provider value={guitar ? sound : null}>
+      <ChordSoundContext.Provider value={sound}>
         <article className="grid gap-x-12 gap-y-5 lg:grid-cols-[minmax(0,1fr)_17rem] lg:pt-2">
           <div className="flex min-w-0 flex-col gap-5">
             <TopBar page={page} actor={actor} />
@@ -150,7 +203,7 @@ function SheetScreen({ page, actor }: { page: SheetPageData; actor: string }) {
             )}
             <div className="no-print lg:hidden">{diagrams}</div>
             <div ref={sheetRef}>
-              <ChordTipContext.Provider value={guitar ? { strings: shapeStrings(tuning) } : null}>
+              <ChordTipContext.Provider value={{ strings: shapeStrings(tuning) }}>
                 <SheetView doc={c.doc} options={c.options} now={c.now} className="max-w-[40rem] pt-1" />
               </ChordTipContext.Provider>
             </div>
@@ -158,7 +211,7 @@ function SheetScreen({ page, actor }: { page: SheetPageData; actor: string }) {
           </div>
           <aside className="no-print hidden lg:block">
             <div className="card sticky top-4 flex flex-col gap-5 p-5">
-              <Rail c={c} guitar={guitar} />
+              <Rail c={c} />
               {diagrams && (
                 <div>
                   <div className="label">
@@ -170,7 +223,7 @@ function SheetScreen({ page, actor }: { page: SheetPageData; actor: string }) {
             </div>
           </aside>
         </article>
-        <BottomBar c={c} guitar={guitar} />
+        <BottomBar c={c} />
         {c.stage && <Stage page={page} c={c} />}
       </ChordSoundContext.Provider>
     </SheetShapesProvider>
@@ -256,7 +309,7 @@ function TitleBlock({ page, actor }: { page: SheetPageData; actor: string }) {
   const { rate } = useSheetActions(actor, sheet.rkey, sheet.did)
   const [error, setError] = useState<string | null>(null)
   const version = versions.find((v) => v.uri === sheet.uri)?.version
-  const tuning = getTuning(sheet.tuning)
+  const tuning = getTuning(sheet.tuning, sheet.kind)
 
   const facts = [
     sheet.kind !== 'chords' && KIND_LABEL[sheet.kind],
@@ -359,7 +412,7 @@ function keyValue(c: Controls) {
 }
 
 /** Desktop: every control, labelled. */
-function Rail({ c, guitar }: { c: Controls; guitar: boolean }) {
+function Rail({ c }: { c: Controls }) {
   return (
     <>
       <Stepper
@@ -369,7 +422,7 @@ function Rail({ c, guitar }: { c: Controls; guitar: boolean }) {
         onStep={c.stepTranspose}
         onReset={c.transpose ? () => c.setTranspose(0) : undefined}
       />
-      {guitar && <Stepper label="Capo" value={c.capo === 0 ? 'none' : `fret ${c.capo}`} onStep={c.stepCapo} />}
+      {c.capoable && <Stepper label="Capo" value={c.capo === 0 ? 'none' : `fret ${c.capo}`} onStep={c.stepCapo} />}
       <Stepper
         label="Text size"
         value={`${c.fontSize}px`}
@@ -381,6 +434,13 @@ function Rail({ c, guitar }: { c: Controls; guitar: boolean }) {
         <div className="flex items-center gap-3">
           <PlayButton c={c} size="md" />
           <SpeedSlider c={c} />
+        </div>
+      </div>
+      <div>
+        <div className="label">Hear the chords</div>
+        <div className="flex items-center gap-3">
+          <HearButton c={c} size="md" />
+          <Stepper label="Tempo" value={`${c.bpm} bpm`} onStep={c.stepBpm} bare />
         </div>
       </div>
       <div>
@@ -411,6 +471,24 @@ function PlayButton({ c, size }: { c: Controls; size: 'md' | 'lg' | 'xl' }) {
       aria-label={c.scrolling ? 'Pause autoscroll' : 'Start autoscroll'}
     >
       {c.scrolling ? <Pause className={clsx(ico, 'fill-current')} aria-hidden /> : <Play className={clsx(ico, 'fill-current')} aria-hidden />}
+    </button>
+  )
+}
+
+/** Plays the whole chart, a bar per chord, lighting each chord up. */
+function HearButton({ c, size }: { c: Controls; size: 'md' | 'xl' }) {
+  const box = { md: 'h-12 w-12', xl: 'h-14 w-14' }[size]
+  const ico = { md: 'h-5 w-5', xl: 'h-6 w-6' }[size]
+  return (
+    <button
+      type="button"
+      className={clsx('btn shrink-0 px-0', box, c.hearing && 'btn-on')}
+      onClick={c.toggleHearing}
+      aria-pressed={c.hearing}
+      aria-label={c.hearing ? 'Stop playing the chords' : 'Hear the chords: play the chart through'}
+      title={c.hearing ? 'Stop' : 'Hear the chords, a bar each'}
+    >
+      {c.hearing ? <Square className={clsx(ico, 'fill-current')} aria-hidden /> : <Volume2 className={ico} aria-hidden />}
     </button>
   )
 }
@@ -519,16 +597,19 @@ function Stepper({
   detail,
   onStep,
   onReset,
+  bare,
 }: {
   label: string
   value: string
   detail?: string
   onStep: (d: number) => void
   onReset?: () => void
+  /** Without its label (it's beside a button that says what it's for). */
+  bare?: boolean
 }) {
   return (
     <div>
-      <div className="label">{label}</div>
+      {!bare && <div className="label">{label}</div>}
       <div className="flex items-center gap-1">
         <button type="button" className="btn bg-bg px-0 lg:bg-surface-raised" onClick={() => onStep(-1)} aria-label={`${label} down`}>
           <Minus className="h-4 w-4" aria-hidden />
@@ -552,7 +633,7 @@ function Stepper({
 }
 
 /** Phones: the controls you reach for mid-song, under your thumb. */
-function BottomBar({ c, guitar }: { c: Controls; guitar: boolean }) {
+function BottomBar({ c }: { c: Controls }) {
   const [more, setMore] = useState(false)
   const mini = (label: string, value: string, onStep: (d: number) => void) => (
     <div className="flex flex-col items-center">
@@ -594,6 +675,13 @@ function BottomBar({ c, guitar }: { c: Controls; guitar: boolean }) {
             <div className="label">Scroll speed</div>
             <SpeedSlider c={c} />
           </div>
+          <div>
+            <div className="label">Hear the chords</div>
+            <div className="flex items-center gap-3">
+              <HearButton c={c} size="md" />
+              <Stepper label="Tempo" value={`${c.bpm} bpm`} onStep={c.stepBpm} bare />
+            </div>
+          </div>
           <button
             type="button"
             className="btn btn-primary"
@@ -609,7 +697,7 @@ function BottomBar({ c, guitar }: { c: Controls; guitar: boolean }) {
       )}
       <div className="flex items-center justify-between rounded-[28px] border border-rule bg-surface px-1.5 py-1.5 shadow-float">
         {mini('Key', keyValue(c), c.stepTranspose)}
-        {guitar ? mini('Capo', String(c.capo), c.stepCapo) : <span className="w-24" />}
+        {c.capoable ? mini('Capo', String(c.capo), c.stepCapo) : <span className="w-24" />}
         <PlayButton c={c} size="lg" />
         <ListenButton c={c} size="lg" className="bg-transparent" />
         <button
@@ -631,8 +719,8 @@ function BottomBar({ c, guitar }: { c: Controls; guitar: boolean }) {
  * the lines you've played faded. The screen stays awake.
  */
 function Stage({ page, c }: { page: SheetPageData; c: Controls }) {
-  const tuning = getTuning(page.sheet.tuning)
-  const stageTips = page.sheet.kind === 'chords' || page.sheet.kind === 'tab' ? { strings: shapeStrings(tuning) } : null
+  const tuning = getTuning(page.sheet.tuning, page.sheet.kind)
+  const stageTips = { strings: shapeStrings(tuning) }
   const ref = useRef<HTMLDivElement>(null)
   const [progress, setProgress] = useState(0)
   const { setStage, setScrolling } = c
@@ -711,6 +799,7 @@ function Stage({ page, c }: { page: SheetPageData; c: Controls }) {
         </button>
         <PlayButton c={c} size="xl" />
         <ListenButton c={c} size="xl" />
+        <HearButton c={c} size="xl" />
         <button type="button" className="btn h-14 w-14 px-0" aria-label="Faster" onClick={() => c.setSpeed(Math.min(10, c.speed + 1))}>
           <Plus className="h-5 w-5" aria-hidden />
         </button>

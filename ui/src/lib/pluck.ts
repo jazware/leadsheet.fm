@@ -5,6 +5,7 @@
  * highs first, which is what a plucked string does.
  */
 import type { Frets } from '@/lib/guitar'
+import type { Instrument } from '@/lib/tunings'
 
 const midiHz = (m: number) => 440 * 2 ** ((m - 69) / 12)
 
@@ -12,7 +13,7 @@ const midiHz = (m: number) => 440 * 2 ** ((m - 69) / 12)
  * One plucked note, as samples. Deterministic (seeded noise), so every
  * pluck of a note sounds the same and tests can check it.
  */
-export function pluckSamples(freq: number, sampleRate: number, seconds = 3.5, seed = 1): Float32Array {
+export function pluckSamples(freq: number, sampleRate: number, seconds = 3.5, seed = 1, bright = 0.5): Float32Array {
   const n = Math.floor(sampleRate * seconds)
   const out = new Float32Array(n)
   // Each pass averages the samples `len` and `len - 1` behind, a delay of
@@ -26,7 +27,8 @@ export function pluckSamples(freq: number, sampleRate: number, seconds = 3.5, se
   const t60 = Math.min(8, Math.max(1.5, 7 * Math.sqrt(80 / freq)))
   const loss = 10 ** ((-3 * period) / (sampleRate * t60))
 
-  // Excitation: noise, softened (a pick, not a razor), minus a copy a
+  // Excitation: noise, softened (a pick, not a razor; nylon or a thumb is
+  // softer still: `bright` lower), minus a copy a
   // little way along (plucking an eighth of the way from the bridge).
   let s = seed >>> 0 || 1
   const noise = () => {
@@ -38,7 +40,7 @@ export function pluckSamples(freq: number, sampleRate: number, seconds = 3.5, se
   const line = new Float32Array(len)
   let lp = 0
   for (let i = 0; i < len; i++) {
-    lp += 0.5 * (noise() - lp)
+    lp += bright * (noise() - lp)
     line[i] = lp
   }
   const at = Math.max(1, Math.round(len / 8))
@@ -74,7 +76,11 @@ export function chordPitches(frets: Frets, openStrings: number[], capo = 0): num
 
 let ctx: AudioContext | null = null
 let out: AudioNode | null = null
-const buffers = new Map<number, AudioBuffer>()
+const buffers = new Map<string, AudioBuffer>()
+
+// How bright each instrument's pluck is: steel strings with a pick, nylon
+// ukulele strings, a bass plucked with fingers.
+const BRIGHT: Record<Instrument, number> = { guitar: 0.5, ukulele: 0.28, bass: 0.22 }
 
 /** The shared audio graph: a touch of body resonance and a limiter. */
 function audio(): { ctx: AudioContext; out: AudioNode } {
@@ -97,14 +103,14 @@ function audio(): { ctx: AudioContext; out: AudioNode } {
   return { ctx, out }
 }
 
-function note(midi: number): AudioBuffer {
+function note(midi: number, instrument: Instrument): AudioBuffer {
   const { ctx } = audio()
-  let buf = buffers.get(midi)
+  let buf = buffers.get(`${instrument}:${midi}`)
   if (!buf) {
-    const samples = pluckSamples(midiHz(midi), ctx.sampleRate, 3.5, midi)
+    const samples = pluckSamples(midiHz(midi), ctx.sampleRate, 3.5, midi, BRIGHT[instrument])
     buf = ctx.createBuffer(1, samples.length, ctx.sampleRate)
     buf.getChannelData(0).set(samples)
-    buffers.set(midi, buf)
+    buffers.set(`${instrument}:${midi}`, buf)
   }
   return buf
 }
@@ -112,31 +118,139 @@ function note(midi: number): AudioBuffer {
 /** Whether the reader has played something yet (so the browser allows sound). */
 export const audioStarted = () => ctx !== null
 
-let playing: GainNode[] = []
+// What's sounding (to damp at the next strum) and what's queued (to cancel).
+let ringing: GainNode[] = []
+let queued: AudioBufferSourceNode[] = []
 
 /**
- * Strums a chord shape, low string to high, like a relaxed downstroke.
- * Anything still ringing is damped first, as a hand would.
+ * Strums a shape at audio time `when`: a downstroke low string to high,
+ * or a lighter upstroke across the top four strings. Whatever was ringing
+ * is damped at that moment, as the strumming hand would.
  */
-export function strum(frets: Frets, openStrings: number[], capo = 0) {
-  const pitches = chordPitches(frets, openStrings, capo)
-  if (!pitches.length) return
+function strumAt(
+  frets: Frets,
+  openStrings: number[],
+  capo: number,
+  instrument: Instrument,
+  when: number,
+  up = false,
+  level = 1,
+  only?: number,
+) {
   const { ctx, out } = audio()
-  void ctx.resume()
-  const now = ctx.currentTime + 0.02
-  for (const g of playing) {
-    g.gain.cancelScheduledValues(now)
-    g.gain.setTargetAtTime(0, now, 0.03)
-  }
-  playing = []
-  const level = 0.9 / Math.sqrt(pitches.length)
+  let pitches = chordPitches(frets, openStrings, capo)
+  if (only !== undefined) pitches = pitches.slice(only, only + 1)
+  else if (up) pitches = pitches.slice(-4).reverse()
+  if (!pitches.length) return
+  for (const g of ringing) g.gain.setTargetAtTime(0, when, 0.025)
+  ringing = []
+  const base = (0.9 / Math.sqrt(pitches.length)) * level
+  const gap = up ? 0.014 : 0.028
   pitches.forEach((midi, i) => {
     const src = ctx.createBufferSource()
-    src.buffer = note(midi)
+    src.buffer = note(midi, instrument)
     const gain = ctx.createGain()
-    gain.gain.value = level * (1 - i * 0.04)
+    gain.gain.value = base * (1 - i * 0.04)
     src.connect(gain).connect(out)
-    src.start(now + i * 0.028)
-    playing.push(gain)
+    src.start(when + i * gap)
+    src.onended = () => (queued = queued.filter((q) => q !== src))
+    ringing.push(gain)
+    queued.push(src)
   })
+}
+
+/** Strums a chord shape now (a bass shape is played as a quick arpeggio). */
+export function strum(frets: Frets, openStrings: number[], capo = 0, instrument: Instrument = 'guitar') {
+  const { ctx } = audio()
+  void ctx.resume()
+  const now = ctx.currentTime + 0.02
+  if (instrument === 'bass') {
+    chordPitches(frets, openStrings, capo).forEach((_, i) => strumAt(frets, openStrings, capo, instrument, now + i * 0.18, false, 1, i))
+  } else strumAt(frets, openStrings, capo, instrument, now)
+}
+
+/** Silences everything, including strums queued for later. */
+export function hush() {
+  if (!ctx) return
+  const now = ctx.currentTime
+  for (const src of queued) {
+    try {
+      src.stop(now + 0.05)
+    } catch {
+      // never started
+    }
+  }
+  for (const g of ringing) g.gain.setTargetAtTime(0, now, 0.02)
+  queued = []
+  ringing = []
+}
+
+// One bar of "down, down-up, up-down-up" in eighths: [beat, upstroke, level].
+const STRUM: [number, boolean, number][] = [
+  [0, false, 1],
+  [1, false, 0.7],
+  [1.5, true, 0.5],
+  [2.5, true, 0.5],
+  [3, false, 0.75],
+  [3.5, true, 0.5],
+]
+// A bass bar: root, root-root, fifth, octave: [beat, note of the shape (0 root, 1 fifth, 2 octave), level].
+const BASS_LINE: [number, number, number][] = [
+  [0, 0, 1],
+  [1, 0, 0.8],
+  [1.5, 0, 0.6],
+  [2, 1, 0.8],
+  [3, 2, 0.75],
+]
+export const BEATS_PER_CHORD = 4
+
+/**
+ * Plays a chart: each chord a bar of the strum pattern at `bpm`, starting
+ * from chord `from`. Strums are queued on the audio clock a little ahead,
+ * so timing holds when the page is busy. `onChord` fires as each chord
+ * starts sounding and `onEnd` after the last; the returned function stops.
+ */
+export function playThrough(
+  chords: (Frets | null)[],
+  openStrings: number[],
+  capo: number,
+  bpm: number,
+  onChord: (index: number) => void,
+  onEnd: () => void,
+  from = 0,
+  instrument: Instrument = 'guitar',
+): () => void {
+  const { ctx } = audio()
+  void ctx.resume()
+  const beat = 60 / bpm
+  const bar = BEATS_PER_CHORD * beat
+  const start = ctx.currentTime + 0.1
+  const timers: ReturnType<typeof setTimeout>[] = []
+  let next = from
+  const at = (i: number) => start + (i - from) * bar
+  const tick = () => {
+    while (next < chords.length && at(next) < ctx.currentTime + 0.5) {
+      const i = next++
+      const frets = chords[i]
+      if (frets && instrument === 'bass') {
+        for (const [b, n, level] of BASS_LINE) strumAt(frets, openStrings, capo, instrument, at(i) + b * beat, false, level, n)
+      } else if (frets) {
+        for (const [b, up, level] of STRUM) strumAt(frets, openStrings, capo, instrument, at(i) + b * beat, up, level)
+      }
+      timers.push(setTimeout(() => onChord(i), Math.max(0, (at(i) - ctx.currentTime) * 1000)))
+    }
+    if (next >= chords.length && ctx.currentTime > at(chords.length) - 0.05) {
+      // Done: let the last chord ring out.
+      clearInterval(interval)
+      onEnd()
+    }
+  }
+  const interval = setInterval(tick, 100)
+  tick()
+  const stop = () => {
+    clearInterval(interval)
+    timers.forEach(clearTimeout)
+    hush()
+  }
+  return stop
 }

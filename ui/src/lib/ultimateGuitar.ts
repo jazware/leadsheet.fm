@@ -1,7 +1,7 @@
 import type { SheetInput } from '@/lib/api'
 import { chordsOverLyricsToChordPro } from '@/lib/convert'
 import { mod12 } from '@/lib/music'
-import { TUNINGS } from '@/lib/tunings'
+import { tuningsFor } from '@/lib/tunings'
 
 // Importing from Ultimate Guitar: a bookmarklet reads the tab from the UG
 // page the user is looking at and opens Leadsheet's editor with it in the
@@ -104,8 +104,8 @@ const DIFFICULTY: Record<string, string> = {
 
 const NOTE: Record<string, number> = { C: 0, D: 2, E: 4, F: 5, G: 7, A: 9, B: 11 }
 
-/** "Eb Ab Db Gb Bb Eb" → a Leadsheet tuning id, compared by pitch class. */
-export function tuningId(value: string): string {
+/** "Eb Ab Db Gb Bb Eb" (or "G C E A", "E A D G") → a Leadsheet tuning id for that instrument, compared by pitch class. */
+export function tuningId(value: string, kind = 'chords'): string {
   const pcs = value
     .trim()
     .split(/\s+/)
@@ -115,8 +115,8 @@ export function tuningId(value: string): string {
       const acc = m[2] === '#' || m[2] === '♯' ? 1 : m[2] === 'b' || m[2] === '♭' ? -1 : 0
       return mod12(NOTE[m[1].toUpperCase()] + acc)
     })
-  if (pcs.length !== 6 || pcs.some((p) => p === null)) return 'standard'
-  const match = TUNINGS.find((t) => t.strings.every((s, i) => mod12(s) === pcs[i]))
+  if (pcs.some((p) => p === null)) return 'standard'
+  const match = tuningsFor(kind).find((t) => t.strings.length === pcs.length && t.strings.every((s, i) => mod12(s) === pcs[i]))
   return match?.id ?? 'standard'
 }
 
@@ -133,7 +133,7 @@ export function importToSheet(p: UGImport): SheetInput {
     content: ugToChordPro(p.content),
     key: p.key.trim(),
     capo: Math.max(0, Math.min(12, Math.round(Number(p.capo) || 0))),
-    tuning: p.tuning ? tuningId(p.tuning) : 'standard',
+    tuning: p.tuning ? tuningId(p.tuning, KINDS[p.type.trim().toLowerCase()] ?? 'chords') : 'standard',
     difficulty: DIFFICULTY[p.difficulty.trim().toLowerCase()] ?? '',
     description: credit,
     tags: [],
