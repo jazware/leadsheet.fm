@@ -147,6 +147,15 @@ function useSheetControls(page: SheetPageData) {
     setHearing(null)
   }
   useEffect(() => () => stopHearing.current?.(), [])
+  // A new instrument (or key, capo, spelling or voicing) takes over from the
+  // chord that's playing, as a new tempo does.
+  const latest = useRef({ hear, hearing })
+  latest.current = { hear, hearing }
+  const heard = [instrument, shift, capo, simplify, strings.join(), sound.strings.join(), JSON.stringify(picks)].join('|')
+  useEffect(() => {
+    const { hear, hearing } = latest.current
+    if (hearing !== null) hear(hearing)
+  }, [heard])
 
   const now = play.state.status === 'listening' ? play.state.now : hearing !== null ? sequence[hearing] ?? null : null
 
