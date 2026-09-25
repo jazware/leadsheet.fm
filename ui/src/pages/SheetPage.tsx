@@ -102,7 +102,12 @@ function useSheetControls(page: SheetPageData) {
     const strings = shapeStrings(tuning)
     const frets = sequence.map((seg) => {
       const c = seg.chord!
-      const shown = { ...c, root: mod12(c.root + shift), quality: simplify && c.quality ? simplifyQuality(c.quality) : c.quality }
+      const shown = {
+        ...c,
+        root: mod12(c.root + shift),
+        bass: c.bass === null ? null : mod12(c.bass + shift),
+        quality: simplify && c.quality ? simplifyQuality(c.quality) : c.quality,
+      }
       // The sheet doesn't say how long chords last: a bar each.
       return { frets: resolveVoicing(shown, strings, shapes, picks)?.frets ?? null, beats: BEATS_PER_CHORD }
     })
@@ -190,6 +195,7 @@ function SheetScreen({ page, actor }: { page: SheetPageData; actor: string }) {
           chord={{
             ...ch,
             root: mod12(ch.root + c.options.shift),
+            bass: ch.bass === null ? null : mod12(ch.bass + c.options.shift),
             quality: c.simplify && ch.quality ? simplifyQuality(ch.quality) : ch.quality,
           }}
           label={chordLabel(ch, c.options)}

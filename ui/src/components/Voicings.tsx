@@ -5,10 +5,15 @@ import { parseChord, type ChordSymbol } from '@/lib/music'
 import type { SheetVoicing } from '@/lib/api'
 import type { Instrument } from '@/lib/tunings'
 
-type ChordLike = Pick<ChordSymbol, 'root' | 'quality' | 'suffix'>
+type ChordLike = Pick<ChordSymbol, 'root' | 'quality' | 'suffix'> & { bass?: number | null }
 
-/** How a chord is looked up: its root and quality, or its suffix when we don't know the quality. */
-export const chordKey = (c: ChordLike) => `${c.root}:${c.quality ?? `?${c.suffix}`}`
+/**
+ * How a chord is looked up: its root and quality (or its suffix when we
+ * don't know the quality), and a slash chord's bass: Em7/D and Em7/G are
+ * different chords with different shapes.
+ */
+export const chordKey = (c: ChordLike) =>
+  `${c.root}:${c.quality ?? `?${c.suffix}`}${c.bass !== undefined && c.bass !== null && c.bass !== c.root ? `/${c.bass}` : ''}`
 
 /**
  * Which voicing the reader picked for each chord (and tuning), remembered
@@ -83,7 +88,7 @@ export function SheetShapesProvider({ value, children }: { value: SheetShapes | 
 
 /** A chord's shapes, the sheet's own first when it has one. */
 function shapesList(chord: ChordLike, strings: number[], own: Frets | undefined): Voicing[] {
-  const generated = chord.quality ? shapesFor({ root: chord.root, quality: chord.quality }, strings) : []
+  const generated = chord.quality ? shapesFor({ root: chord.root, quality: chord.quality, bass: chord.bass }, strings) : []
   if (!own) return generated
   const ownKey = fretsKey(own)
   const mine = generated.find((v) => fretsKey(v.frets) === ownKey)
@@ -122,11 +127,12 @@ export function useVoicing(chord: ChordLike | null, strings: number[]) {
   const quality = chord?.quality ?? null
   const root = chord?.root ?? 0
   const suffix = chord?.suffix ?? ''
+  const bass = chord?.bass ?? null
   const ownKey = own ? fretsKey(own) : ''
   const shapes: Voicing[] = useMemo(
-    () => (chord ? shapesList({ root, quality, suffix }, strings, own) : []),
+    () => (chord ? shapesList({ root, quality, suffix, bass }, strings, own) : []),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [quality, root, suffix, strings.join(','), ownKey],
+    [quality, root, suffix, bass, strings.join(','), ownKey],
   )
 
   const storeKey = chord ? pickKey(strings, chord, own ? sheet!.scope : undefined) : ''
@@ -137,7 +143,7 @@ export function useVoicing(chord: ChordLike | null, strings: number[]) {
     const next = shapes[(index + d + shapes.length) % shapes.length]
     if (sheet?.edit) {
       // Back to what the app would show anyway: nothing to store.
-      const generated0 = quality ? shapesFor({ root, quality }, strings)[0] : undefined
+      const generated0 = quality ? shapesFor({ root, quality, bass }, strings)[0] : undefined
       sheet.edit(key, generated0 && fretsKey(next.frets) === fretsKey(generated0.frets) ? null : next.frets)
     } else {
       pick(storeKey, next === shapes[0] ? null : fretsKey(next.frets))

@@ -6,6 +6,8 @@ export type Quality =
 export interface Chord {
   root: number
   quality: Quality
+  /** A slash chord's bass note (pitch class), when it isn't the root. */
+  bass?: number | null
 }
 
 /** A chord symbol as written: root and bass transpose, the suffix is kept verbatim. */

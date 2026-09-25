@@ -106,8 +106,24 @@ function place(shape: Frets, rootFret: number, rootString: number): Voicing | nu
  * above; any other tuning searches the fretboard.
  */
 export function voicings(chord: Chord, strings: number[] = STANDARD_STRINGS): Voicing[] {
+  const instrument = instrumentFor(strings)
+  // A ukulele has no low bass note to put under a chord (its G string is
+  // re-entrant): a slash chord is played as its chord.
+  if (isSlash(chord) && instrument === 'ukulele') chord = { root: chord.root, quality: chord.quality }
+  // On guitar, a slash chord wants its bass note lowest: search for those,
+  // falling back to the plain chord if nothing's playable.
+  if (isSlash(chord) && instrument === 'guitar') {
+    const key = `${strings.join(',')}|${chordId(chord)}`
+    let found = searchCache.get(key)
+    if (!found) {
+      found = searchVoicings(chord, strings)
+      if (!found.length) found = voicings({ root: chord.root, quality: chord.quality }, strings)
+      searchCache.set(key, found)
+    }
+    return found
+  }
   if (isStandardGuitar(strings)) return standardVoicings(chord)
-  const key = `${strings.join(',')}|${chord.root}:${chord.quality}`
+  const key = `${strings.join(',')}|${chordId(chord)}`
   let found = searchCache.get(key)
   if (!found) {
     found = instrumentFor(strings) === 'bass' ? bassVoicings(chord, strings) : searchVoicings(chord, strings)
@@ -132,6 +148,10 @@ const UKULELE_CHART: Record<string, Frets> = {
 }
 const UKULELE = [67, 60, 64, 69]
 
+/** A slash chord whose bass isn't its root ("Em7/D"). */
+const isSlash = (c: Chord) => c.bass !== undefined && c.bass !== null && c.bass !== c.root
+const chordId = (c: Chord) => `${c.root}:${c.quality}${isSlash(c) ? `/${c.bass}` : ''}`
+
 const isStandardGuitar = (strings: number[]) =>
   strings.length === STANDARD_STRINGS.length && strings.every((s, i) => s === STANDARD_STRINGS[i])
 
@@ -141,21 +161,24 @@ const isStandardGuitar = (strings: number[]) =>
  */
 function bassVoicings(chord: Chord, strings: number[]): Voicing[] {
   const fifth = TONES[chord.quality].find((i) => i === 7 || i === 6 || i === 8) ?? 7
+  // A slash chord's bass note is what the bass plays: it and its octave.
+  const slash = isSlash(chord)
+  const low = slash ? chord.bass! : chord.root
   const out: Voicing[] = []
   for (let s = 0; s + 2 < strings.length; s++) {
     for (let r = 0; r <= 12; r++) {
       const root = strings[s] + r
-      if (mod12(root) !== chord.root) continue
-      const f5 = root + fifth - strings[s + 1]
+      if (mod12(root) !== low) continue
+      const f5 = slash ? null : root + fifth - strings[s + 1]
       const f8 = root + 12 - strings[s + 2]
-      const fretted = [r, f5, f8].filter((f) => f > 0)
-      if (f5 < 0 || f8 < 0 || f5 > 15 || f8 > 15) continue
+      const fretted = [r, f5 ?? 0, f8].filter((f) => f > 0)
+      if ((f5 !== null && (f5 < 0 || f5 > 15)) || f8 < 0 || f8 > 15) continue
       if (fretted.length && Math.max(...fretted) - Math.min(...fretted) > 3) continue
       const frets: Frets = strings.map(() => null)
       frets[s] = r
       frets[s + 1] = f5
       frets[s + 2] = f8
-      out.push({ frets, open: Math.max(r, f5, f8) <= 4 })
+      out.push({ frets, open: Math.max(r, f5 ?? 0, f8) <= 4 })
     }
   }
   return out.sort((a, b) => lowestFret(a) - lowestFret(b))
@@ -172,15 +195,16 @@ const MAX_SHAPES = 8
  * the best of the fretboard search, the extras ordered up the neck.
  */
 export function shapesFor(chord: Chord, strings: number[] = STANDARD_STRINGS): Voicing[] {
-  const key = `shapes|${strings.join(',')}|${chord.root}:${chord.quality}`
+  const key = `shapes|${strings.join(',')}|${chordId(chord)}`
   let out = searchCache.get(key)
   if (out) return out
+  if (instrumentFor(strings) === 'ukulele' && isSlash(chord)) chord = { root: chord.root, quality: chord.quality }
   if (instrumentFor(strings) === 'bass') {
     out = voicings(chord, strings).slice(0, MAX_SHAPES)
     searchCache.set(key, out)
     return out
   }
-  const standard = isStandardGuitar(strings)
+  const standard = isStandardGuitar(strings) && !isSlash(chord)
   const head = standard ? standardVoicings(chord) : voicings(chord, strings).slice(0, 1)
   const seen = new Set(head.map((v) => v.frets.join(',')))
   let searched = searchCache.get(`std|${chord.root}:${chord.quality}`)
@@ -380,10 +404,13 @@ const MAX_FRET = 12
  */
 function searchVoicings(chord: Chord, strings: number[]): Voicing[] {
   const ukulele = instrumentFor(strings) === 'ukulele'
-  const tones = new Set(chordTones(chord))
-  const required = TONES[chord.quality]
-    .filter((i) => !(i === 7 && TONES[chord.quality].length >= 4))
-    .map((i) => mod12(chord.root + i))
+  // The lowest note: a slash chord's bass, else the root.
+  const lowest = isSlash(chord) && !ukulele ? chord.bass! : chord.root
+  const tones = new Set([...chordTones(chord), lowest])
+  const required = [
+    ...TONES[chord.quality].filter((i) => !(i === 7 && TONES[chord.quality].length >= 4)).map((i) => mod12(chord.root + i)),
+    lowest,
+  ]
 
   const found = new Map<string, { v: Voicing; score: number }>()
   for (let base = 0; base <= MAX_FRET - SEARCH_WINDOW + 1; base++) {
@@ -397,7 +424,7 @@ function searchVoicings(chord: Chord, strings: number[]): Voicing[] {
     const pick: (number | null)[] = []
     const walk = (s: number) => {
       if (s === strings.length) {
-        const v = judge(pick, strings, chord.root, required, ukulele)
+        const v = judge(pick, strings, lowest, required, ukulele)
         if (v) {
           const key = v.v.frets.join(',')
           const prev = found.get(key)

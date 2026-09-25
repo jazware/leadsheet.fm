@@ -45,6 +45,7 @@ export function ChordTip({
   const shown = {
     ...chord,
     root: mod12(chord.root + shift),
+    bass: chord.bass === null ? null : mod12(chord.bass + shift),
     quality: simplify && chord.quality ? simplifyQuality(chord.quality) : chord.quality,
   }
   const { step, voicing } = useVoicing(shown, ctx?.strings ?? STANDARD_STRINGS)
