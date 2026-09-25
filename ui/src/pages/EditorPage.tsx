@@ -2,9 +2,10 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { clsx } from 'clsx'
-import { ChevronDown, Trash2 } from 'lucide-react'
+import { ChevronDown, FileUp, Trash2 } from 'lucide-react'
 import { api, profilePath, sheetInput, sheetPath, type Sheet, type SheetInput } from '@/lib/api'
 import { chordsIn, parseChordPro, type Doc } from '@/lib/chordpro'
+import { CHORDPRO_ACCEPT, fromChordProFile } from '@/lib/chordproFile'
 import { chordsOverLyricsToChordPro, looksLikeChordsOverLyrics } from '@/lib/convert'
 import { importDraftKey, importToSheet, looksLikeUGMarkup, readImport, ugToChordPro, type UGImport } from '@/lib/ultimateGuitar'
 import { forgetSheet } from '@/lib/recent'
@@ -228,6 +229,26 @@ function Editor({
     setPastedLayout(false)
   }
 
+  // Opening a ChordPro (or text) file: its fields and sheet replace the
+  // form's, with the old form kept for Undo.
+  const fileInput = useRef<HTMLInputElement>(null)
+  const [opened, setOpened] = useState<{ name: string; prev?: SheetInput; moreSongs?: boolean; error?: string } | null>(null)
+  const openFile = async (file: File) => {
+    if (file.size > 1_000_000) return setOpened({ name: file.name, error: "it's too big to be a sheet" })
+    const { fields, content, moreSongs } = fromChordProFile(await file.text())
+    if (!content.trim()) return setOpened({ name: file.name, error: "there's no sheet in it" })
+    const prev = form
+    setForm((f) => {
+      const next = { ...f, ...fields, content }
+      // A tuning or capo the instrument can't have goes, as when picking one.
+      if (!tuningsFor(next.kind).some((t) => t.id === next.tuning)) next.tuning = 'standard'
+      if (next.kind === 'piano' || next.kind === 'bass') next.capo = 0
+      return next
+    })
+    setPastedLayout(false)
+    setOpened({ name: file.name, prev, moreSongs })
+  }
+
   const insert = (snippet: string) => {
     const el = textarea.current
     const at = el ? el.selectionStart : form.content.length
@@ -392,6 +413,21 @@ function Editor({
       <div className="grid gap-8 lg:grid-cols-2">
         <div className={clsx('flex flex-col gap-3', tab !== 'write' && 'hidden lg:flex')}>
           <div className="flex flex-wrap gap-2">
+            <button type="button" className="btn btn-sm" onClick={() => fileInput.current?.click()} title="Open a ChordPro or text file">
+              <FileUp className="h-4 w-4" aria-hidden />
+              Open file
+            </button>
+            <input
+              ref={fileInput}
+              type="file"
+              accept={CHORDPRO_ACCEPT}
+              className="hidden"
+              onChange={(e) => {
+                const file = e.target.files?.[0]
+                e.target.value = '' // so the same file can be opened again
+                if (file) void openFile(file)
+              }}
+            />
             <button type="button" className="btn btn-sm" onClick={convert}>
               Put chords inline
             </button>
@@ -411,6 +447,32 @@ function Editor({
               Note
             </button>
           </div>
+          {opened && (
+            <div className="flex flex-wrap items-center justify-between gap-2 rounded-2xl bg-glow px-4 py-2.5 font-bold text-glow-ink" role="status">
+              <span className="min-w-0 break-words">
+                {opened.error
+                  ? `Couldn't open ${opened.name}: ${opened.error}.`
+                  : `Opened ${opened.name}${opened.moreSongs ? ". It has more songs; this is the first" : ''}.`}
+              </span>
+              <span className="flex gap-2">
+                {opened.prev && (
+                  <button
+                    type="button"
+                    className="h-9 rounded-full bg-glow-ink px-4 text-sm font-extrabold text-glow"
+                    onClick={() => {
+                      setForm(opened.prev!)
+                      setOpened(null)
+                    }}
+                  >
+                    Undo
+                  </button>
+                )}
+                <button type="button" className="h-9 px-2 text-sm underline" onClick={() => setOpened(null)}>
+                  Dismiss
+                </button>
+              </span>
+            </div>
+          )}
           {pastedLayout && (
             <div className="flex flex-wrap items-center justify-between gap-2 rounded-2xl bg-glow px-4 py-2.5 font-bold text-glow-ink">
               <span>Chords are above the lyrics. Put them inline?</span>
@@ -439,10 +501,21 @@ function Editor({
               const text = e.clipboardData.getData('text')
               if (looksLikeUGMarkup(text) || looksLikeChordsOverLyrics(text)) setPastedLayout(true)
             }}
+            // Dropping a file opens it.
+            onDragOver={(e) => {
+              if (e.dataTransfer.types.includes('Files')) e.preventDefault()
+            }}
+            onDrop={(e) => {
+              const file = e.dataTransfer.files[0]
+              if (!file) return
+              e.preventDefault()
+              void openFile(file)
+            }}
           />
           <p className="text-sm font-semibold text-ink-soft">
             Put each [chord] in square brackets right before the syllable it's played on. A line with just [Verse]
-            or [Chorus] starts a section. It's ChordPro, so {'{title: …}'} style directives work too.
+            or [Chorus] starts a section. It's ChordPro, so {'{title: …}'} style directives work too, and you can open
+            a ChordPro or text file (or drop one here).
           </p>
           <Field label="Notes for players (optional)">
             <textarea

@@ -3,9 +3,10 @@ import { createPortal } from 'react-dom'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import { clsx } from 'clsx'
 import { useQueryClient } from '@tanstack/react-query'
-import { ArrowLeft, Bookmark, ChevronDown, ExternalLink, GitFork, Maximize2, Mic, MicOff, Minus, Pause, Pencil, Play, Plus, Printer, SlidersHorizontal, Square, Volume2, X } from 'lucide-react'
+import { ArrowLeft, Bookmark, ChevronDown, Download, ExternalLink, GitFork, Maximize2, Mic, MicOff, Minus, Pause, Pencil, Play, Plus, Printer, SlidersHorizontal, Square, Volume2, X } from 'lucide-react'
 import { api, KIND_LABEL, sheetInput, sheetPath, type SheetPage as SheetPageData } from '@/lib/api'
 import { chordsIn, parseChordPro, type Segment } from '@/lib/chordpro'
+import { chordProFileName, toChordProFile } from '@/lib/chordproFile'
 import { embedFor, isWebLink, linkLabel } from '@/lib/links'
 import { keyText, keyUsesFlats, mod12, noteName, parseKey, pretty, simplifyQuality, type Quality } from '@/lib/music'
 import { getTuning, instrumentOf, shapeStrings, tuningsFor, type Instrument } from '@/lib/tunings'
@@ -660,6 +661,16 @@ function SheetActions({ page, actor, compact }: { page: SheetPageData; actor: st
           {text('Edit')}
         </Link>
       )}
+      <button
+        type="button"
+        className={clsx('btn', compact && 'px-0')}
+        aria-label={compact ? 'Download as ChordPro' : undefined}
+        title="Download as a ChordPro file (.cho), for songbook apps"
+        onClick={() => downloadChordPro(sheet)}
+      >
+        <Download className={icon} aria-hidden />
+        {text('Download')}
+      </button>
       {!compact && (
         <button type="button" className="btn" onClick={() => window.print()}>
           <Printer className={icon} aria-hidden />
@@ -669,6 +680,17 @@ function SheetActions({ page, actor, compact }: { page: SheetPageData; actor: st
       {error && <p className="basis-full text-right text-sm font-bold text-chord">{error}</p>}
     </div>
   )
+}
+
+/** Saves the sheet, as written, as a .cho file. */
+function downloadChordPro(sheet: SheetPageData['sheet']) {
+  const file = toChordProFile(sheet, window.location.origin + sheetPath(sheet))
+  const url = URL.createObjectURL(new Blob([file], { type: 'text/plain;charset=utf-8' }))
+  const a = document.createElement('a')
+  a.href = url
+  a.download = chordProFileName(sheet)
+  a.click()
+  setTimeout(() => URL.revokeObjectURL(url), 1000)
 }
 
 /** On your own draft: what a draft is, and a way to publish it. */
