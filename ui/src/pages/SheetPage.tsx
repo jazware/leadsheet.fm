@@ -416,8 +416,12 @@ function InstrumentSwitch({ c, roomy }: { c: Controls; roomy?: boolean }) {
           title={i === c.written ? `${INSTRUMENT_NAME[i]}, as the sheet is written` : `For ${INSTRUMENT_NAME[i].toLowerCase()}, at sounding pitch`}
           className={clsx('relative rounded-full font-extrabold', roomy ? 'h-9 text-sm' : 'h-7 text-xs', c.instrument === i ? 'bg-glow text-glow-ink' : 'text-ink-soft hover:text-ink')}
         >
-          {short[i]}
-          {i === c.written && <span className="absolute right-1.5 top-1 h-1 w-1 rounded-full bg-current opacity-60" aria-hidden />}
+          {/* The dot marks the instrument the sheet is written for; it hangs
+              off the word, so the word stays centred. */}
+          <span className="relative">
+            {short[i]}
+            {i === c.written && <span className="absolute -right-1.5 top-0 h-1 w-1 rounded-full bg-current opacity-60" aria-hidden />}
+          </span>
         </button>
       ))}
     </div>
