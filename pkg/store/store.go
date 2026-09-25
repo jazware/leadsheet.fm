@@ -9,6 +9,7 @@ import (
 	"errors"
 	"fmt"
 	"github.com/exaring/otelpgx"
+	"strings"
 
 	"github.com/golang-migrate/migrate/v4"
 	migratepgx "github.com/golang-migrate/migrate/v4/database/pgx/v5"
@@ -38,8 +39,9 @@ func Open(ctx context.Context, dsn string) (*Store, error) {
 	if err != nil {
 		return nil, fmt.Errorf("connecting to postgres: %w", err)
 	}
-	// A span per query (the SQL, not its arguments).
-	cfg.ConnConfig.Tracer = otelpgx.NewTracer()
+	// A span per query (the SQL, not its arguments), named for the sqlc
+	// query. Taking a connection from the pool isn't worth a span.
+	cfg.ConnConfig.Tracer = otelpgx.NewTracer(otelpgx.WithSpanNameFunc(querySpanName), otelpgx.WithDisableAcquireTracer())
 	pool, err := pgxpool.NewWithConfig(ctx, cfg)
 	if err != nil {
 		return nil, fmt.Errorf("connecting to postgres: %w", err)
@@ -95,4 +97,23 @@ func noRows(err error) error {
 		return ErrNotFound
 	}
 	return err
+}
+
+// querySpanName names a query's span: sqlc's name for it ("-- name:
+// GetSheet :one" is GetSheet), or else its first keyword (SELECT).
+func querySpanName(sql string) string {
+	sql = strings.TrimSpace(sql)
+	if rest, ok := strings.CutPrefix(sql, "-- name:"); ok {
+		if fields := strings.Fields(rest); len(fields) > 0 {
+			return fields[0]
+		}
+	}
+	for strings.HasPrefix(sql, "--") {
+		_, sql, _ = strings.Cut(sql, "\n")
+		sql = strings.TrimSpace(sql)
+	}
+	if fields := strings.Fields(sql); len(fields) > 0 {
+		return strings.ToUpper(fields[0])
+	}
+	return "query"
 }
