@@ -2,6 +2,7 @@ package ingest
 
 import (
 	"context"
+	"github.com/jazware/leadsheet.fm/pkg/httpclient"
 	"log/slog"
 	"time"
 
@@ -33,7 +34,7 @@ func NewProfileResolver(logger *slog.Logger, st *store.Store, dir identity.Direc
 		logger: logger.With("component", "profiles"),
 		store:  st,
 		dir:    dir,
-		bsky:   atclient.NewAPIClient(bskyAppView),
+		bsky:   httpclient.API(bskyAppView),
 	}
 }
 

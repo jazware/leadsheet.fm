@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"github.com/jazware/leadsheet.fm/pkg/httpclient"
 	"net/http"
 	"sync"
 	"time"
@@ -25,6 +26,9 @@ type repoStars struct {
 
 const repoStarsTTL = time.Hour
 
+// The About page's star count; the request itself is bounded at 5s.
+var githubClient = httpclient.New(10 * time.Second)
+
 func (r *repoStars) get(ctx context.Context) (int, bool) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
@@ -40,8 +44,7 @@ func (r *repoStars) get(ctx context.Context) (int, bool) {
 		return r.stars, r.ok
 	}
 	req.Header.Set("Accept", "application/vnd.github+json")
-	req.Header.Set("User-Agent", "leadsheet")
-	resp, err := http.DefaultClient.Do(req)
+	resp, err := githubClient.Do(req)
 	if err != nil {
 		return r.stars, r.ok
 	}

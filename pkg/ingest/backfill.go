@@ -2,7 +2,9 @@ package ingest
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"github.com/jazware/leadsheet.fm/pkg/httpclient"
 	"log/slog"
 	"strings"
 	"sync"
@@ -59,6 +61,12 @@ func (b *Backfiller) RunOnce(ctx context.Context, force bool) error {
 			defer wg.Done()
 			defer func() { <-sem }()
 			err := b.BackfillRepo(ctx, did)
+			if gone(err) {
+				// Deleted, deactivated or taken down since the relay listed
+				// it: nothing to index, and not a failure.
+				metrics.BackfillRepos.WithLabelValues("gone").Inc()
+				return
+			}
 			metrics.BackfillRepos.WithLabelValues(metrics.Result(err)).Inc()
 			if err != nil {
 				b.logger.Warn("backfilling repo", "did", did, "error", err)
@@ -80,7 +88,7 @@ func (b *Backfiller) RunOnce(ctx context.Context, force bool) error {
 
 // listRepos returns every DID the relay has indexed with any Leadsheet collection.
 func (b *Backfiller) listRepos(ctx context.Context) ([]string, error) {
-	client := atclient.NewAPIClient(b.relay)
+	client := httpclient.API(b.relay)
 	seen := map[string]bool{}
 	var dids []string
 	for _, collection := range records.Collections {
@@ -128,7 +136,7 @@ func (b *Backfiller) BackfillRepo(ctx context.Context, did string) error {
 	if pds == "" {
 		return fmt.Errorf("no PDS in DID document")
 	}
-	client := atclient.NewAPIClient(pds)
+	client := httpclient.PDS(pds)
 	for _, collection := range records.Collections {
 		cursor := ""
 		for {
@@ -160,4 +168,18 @@ func (b *Backfiller) BackfillRepo(ctx context.Context, did string) error {
 		}
 	}
 	return nil
+}
+
+// gone reports whether a PDS said the repo isn't there to read. XRPC
+// sends these as 400s named in the body, not as 404s.
+func gone(err error) bool {
+	var apiErr *atclient.APIError
+	if !errors.As(err, &apiErr) {
+		return false
+	}
+	switch apiErr.Name {
+	case "RepoNotFound", "RepoDeactivated", "RepoTakendown", "RepoSuspended":
+		return true
+	}
+	return false
 }

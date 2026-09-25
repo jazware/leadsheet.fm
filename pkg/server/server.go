@@ -3,6 +3,7 @@ package server
 import (
 	"errors"
 	"fmt"
+	"go.opentelemetry.io/contrib/instrumentation/github.com/labstack/echo/otelecho"
 	"log/slog"
 	"net/http"
 	"strings"
@@ -67,6 +68,10 @@ func New(cfg Config) *echo.Echo {
 	e.HTTPErrorHandler = jsonErrorHandler(cfg.Logger)
 
 	e.Use(middleware.Recover())
+	e.Use(otelecho.Middleware("leadsheet", otelecho.WithSkipper(func(c echo.Context) bool {
+		p := c.Request().URL.Path
+		return p == "/healthz" || strings.HasPrefix(p, "/assets/")
+	})))
 	// Sheets are at most 100 KB of text (the lexicon's limit); nothing we
 	// take is near 1 MB, so don't read more than that into memory.
 	e.Use(middleware.BodyLimit("1M"))

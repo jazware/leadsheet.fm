@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"fmt"
+	"github.com/jazware/leadsheet.fm/pkg/httpclient"
 	"log/slog"
 	"net/http"
 	"os"
@@ -12,7 +13,6 @@ import (
 	"time"
 
 	"github.com/bluesky-social/indigo/atproto/atcrypto"
-	"github.com/bluesky-social/indigo/atproto/identity"
 	"github.com/jazware/leadsheet.fm/pkg/ingest"
 	"github.com/jazware/leadsheet.fm/pkg/metrics"
 	"github.com/jazware/leadsheet.fm/pkg/server"
@@ -107,6 +107,8 @@ func main() {
 				Usage:   "Enable debug logging",
 				EnvVars: []string{"LEADSHEET_DEBUG"},
 			},
+			// Tracing is on when OTEL_EXPORTER_OTLP_ENDPOINT is set.
+			telemetry.CLIFlagTracingSampleRatio,
 		},
 		Action: run,
 		Commands: []*cli.Command{
@@ -145,6 +147,20 @@ func run(cctx *cli.Context) error {
 		"listen_address", cctx.String("listen-address"),
 		"public_url", cctx.String("public-url"))
 
+	if os.Getenv("OTEL_EXPORTER_OTLP_ENDPOINT") != "" {
+		shutdown, err := telemetry.StartTracing(cctx, telemetry.WithServiceName("leadsheet"))
+		if err != nil {
+			return fmt.Errorf("starting tracing: %w", err)
+		}
+		defer func() {
+			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+			defer cancel()
+			if err := shutdown(ctx); err != nil {
+				logger.Error("flushing traces", "error", err)
+			}
+		}()
+	}
+
 	startCtx, cancelStart := context.WithTimeout(context.Background(), time.Minute)
 	db, err := store.Open(startCtx, cctx.String("database-url"))
 	cancelStart()
@@ -159,7 +175,8 @@ func run(cctx *cli.Context) error {
 		return err
 	}
 
-	dir := identity.DefaultDirectory()
+	dir := httpclient.Directory()
+	httpclient.InstrumentOAuth(oauthApp, dir)
 	indexer := ingest.NewIndexer(logger, db)
 	profiles := ingest.NewProfileResolver(logger, db, dir, cctx.String("bsky-appview"))
 	backfiller := ingest.NewBackfiller(logger, db, indexer, dir, cctx.String("relay-host"))
