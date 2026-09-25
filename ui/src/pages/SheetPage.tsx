@@ -258,16 +258,24 @@ function SheetScreen({ page, actor }: { page: SheetPageData; actor: string }) {
             <Related page={page} />
           </div>
           <aside className="no-print hidden lg:block">
-            <div className="card sticky top-4 flex flex-col gap-4 p-4">
-              <SidebarControls c={c} />
+            {/* Never taller than the window: the shapes scroll inside it (see
+                ScrollShapes). On a window too short even for two rows of them,
+                the card itself scrolls. */}
+            <div className="card sticky top-4 flex max-h-[calc(100dvh-2rem)] flex-col gap-4 overflow-y-auto p-4">
+              <div className="flex shrink-0 flex-col gap-4">
+                <SidebarControls c={c} />
+              </div>
               {diagrams && (
-                <div>
-                  <div className="label">
-                    {c.instrument !== c.written ? `${INSTRUMENT_NAME[c.instrument]} shapes` : 'Shapes'}
-                    {tuning && !isStandardShapes(tuning) && <>, {tuning.name}</>}
-                  </div>
+                <ScrollShapes
+                  label={
+                    <>
+                      {c.instrument !== c.written ? `${INSTRUMENT_NAME[c.instrument]} shapes` : 'Shapes'}
+                      {tuning && !isStandardShapes(tuning) && <>, {tuning.name}</>}
+                    </>
+                  }
+                >
                   {diagrams}
-                </div>
+                </ScrollShapes>
               )}
             </div>
           </aside>
@@ -276,6 +284,53 @@ function SheetScreen({ page, actor }: { page: SheetPageData; actor: string }) {
         {c.stage && <Stage page={page} c={c} />}
       </ChordSoundContext.Provider>
     </SheetShapesProvider>
+  )
+}
+
+/**
+ * The sidebar's chord shapes: they take the room the controls leave and
+ * scroll on their own, never shrinking below two rows. An edge fades while
+ * there's more beyond it, and scrolling them doesn't scroll the page.
+ */
+function ScrollShapes({ label, children }: { label: React.ReactNode; children: React.ReactNode }) {
+  const box = useRef<HTMLDivElement>(null)
+  const list = useRef<HTMLDivElement>(null)
+  const [fade, setFade] = useState({ top: false, bottom: false })
+  const [twoRows, setTwoRows] = useState<number | undefined>()
+
+  useEffect(() => {
+    const el = list.current
+    if (!el) return
+    const update = () => {
+      setFade({ top: el.scrollTop > 2, bottom: el.scrollTop + el.clientHeight < el.scrollHeight - 2 })
+      // Two rows of boxes: the first box's height, twice, plus the gap.
+      const grid = el.firstElementChild as HTMLElement | null
+      const first = grid?.firstElementChild as HTMLElement | null
+      if (grid && first) setTwoRows(first.offsetHeight * 2 + parseFloat(getComputedStyle(grid).rowGap || '0'))
+    }
+    update()
+    el.addEventListener('scroll', update, { passive: true })
+    const ro = new ResizeObserver(update)
+    ro.observe(el)
+    if (el.firstElementChild) ro.observe(el.firstElementChild)
+    return () => {
+      el.removeEventListener('scroll', update)
+      ro.disconnect()
+    }
+  }, [])
+
+  return (
+    <div ref={box} className="flex min-h-0 flex-1 flex-col" style={{ minHeight: twoRows !== undefined ? twoRows + 24 : undefined }}>
+      <div className="label shrink-0">{label}</div>
+      <div
+        ref={list}
+        tabIndex={0}
+        aria-label="Chord shapes"
+        className={clsx('shapes-scroll -mx-4 min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 focus-visible:ring-inset', fade.top && 'fade-top', fade.bottom && 'fade-bottom')}
+      >
+        {children}
+      </div>
+    </div>
   )
 }
 
