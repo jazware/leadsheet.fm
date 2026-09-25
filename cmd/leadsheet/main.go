@@ -4,6 +4,8 @@ import (
 	"context"
 	"fmt"
 	"github.com/jazware/leadsheet.fm/pkg/httpclient"
+	"github.com/jazware/leadsheet.fm/pkg/tracing"
+	"go.opentelemetry.io/otel/attribute"
 	"log/slog"
 	"net/http"
 	"os"
@@ -245,7 +247,10 @@ func cleanupLoop(ctx context.Context, logger *slog.Logger, db *store.Store) {
 	ticker := time.NewTicker(time.Hour)
 	defer ticker.Stop()
 	for {
-		r, err := db.Cleanup(ctx, time.Now())
+		cctx, span := tracing.Start(ctx, "cleanup")
+		r, err := db.Cleanup(cctx, time.Now())
+		span.SetAttributes(attribute.Int64("deleted", r.Total()))
+		tracing.End(span, err)
 		switch {
 		case err != nil && ctx.Err() == nil:
 			logger.Error("cleanup failed", "error", err)

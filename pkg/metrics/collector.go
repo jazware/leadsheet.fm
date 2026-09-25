@@ -2,6 +2,7 @@ package metrics
 
 import (
 	"context"
+	"github.com/jazware/leadsheet.fm/pkg/tracing"
 	"log/slog"
 	"sync"
 	"time"
@@ -33,7 +34,9 @@ func (c *Collector) Run(ctx context.Context) {
 	defer ticker.Stop()
 	for {
 		qctx, cancel := context.WithTimeout(ctx, 20*time.Second)
+		qctx, span := tracing.Start(qctx, "metrics.usage")
 		u, err := c.store.Usage(qctx)
+		tracing.End(span, err)
 		cancel()
 		if err != nil {
 			if ctx.Err() == nil {

@@ -5,6 +5,8 @@ import (
 	"errors"
 	"fmt"
 	"github.com/jazware/leadsheet.fm/pkg/httpclient"
+	"github.com/jazware/leadsheet.fm/pkg/tracing"
+	"go.opentelemetry.io/otel/attribute"
 	"log/slog"
 	"strings"
 	"sync"
@@ -42,7 +44,10 @@ func (b *Backfiller) RunOnce(ctx context.Context, force bool) error {
 			return err
 		}
 	}
-	dids, err := b.listRepos(ctx)
+	lctx, span := tracing.Start(ctx, "backfill.list_repos")
+	dids, err := b.listRepos(lctx)
+	span.SetAttributes(attribute.Int("repos", len(dids)))
+	tracing.End(span, err)
 	if err != nil {
 		return err
 	}
@@ -123,7 +128,16 @@ func (b *Backfiller) listRepos(ctx context.Context) ([]string, error) {
 }
 
 // BackfillRepo indexes every Leadsheet record in one repo.
-func (b *Backfiller) BackfillRepo(ctx context.Context, did string) error {
+func (b *Backfiller) BackfillRepo(ctx context.Context, did string) (err error) {
+	ctx, span := tracing.Start(ctx, "backfill.repo", attribute.String("did", did))
+	defer func() {
+		if gone(err) {
+			span.SetAttributes(attribute.Bool("gone", true))
+			span.End()
+			return
+		}
+		tracing.End(span, err)
+	}()
 	parsed, err := syntax.ParseDID(did)
 	if err != nil {
 		return err

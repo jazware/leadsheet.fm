@@ -3,6 +3,8 @@ package ingest
 import (
 	"context"
 	"errors"
+	"github.com/jazware/leadsheet.fm/pkg/tracing"
+	"go.opentelemetry.io/otel/attribute"
 	"log/slog"
 	"strconv"
 	"time"
@@ -136,10 +138,19 @@ func (f *Firehose) handle(ctx context.Context, ev *jetstream.Event) error {
 		}
 		f.logger.Debug("commit", "did", ev.DID, "op", c.Operation, "collection", c.Collection, "rkey", c.Rkey)
 		metrics.FirehoseEvents.WithLabelValues("commit", c.Collection, string(c.Operation)).Inc()
+		// A trace per Leadsheet record. (Not the account and identity
+		// events: those come for the whole network.)
+		ctx, span := tracing.Start(ctx, "jetstream.commit", attribute.String("did", ev.DID),
+			attribute.String("collection", c.Collection), attribute.String("operation", string(c.Operation)),
+			attribute.String("rkey", c.Rkey))
+		var err error
 		if c.Operation == jetstream.OpDelete {
-			return f.indexer.Delete(ctx, ev.DID, c.Collection, c.Rkey)
+			err = f.indexer.Delete(ctx, ev.DID, c.Collection, c.Rkey)
+		} else {
+			err = f.indexer.Put(ctx, ev.DID, c.Collection, c.Rkey, c.CID, c.Record)
 		}
-		return f.indexer.Put(ctx, ev.DID, c.Collection, c.Rkey, c.CID, c.Record)
+		tracing.End(span, err)
+		return err
 	case jetstream.KindAccount:
 		metrics.FirehoseEvents.WithLabelValues("account", "", "").Inc()
 		a := ev.Account

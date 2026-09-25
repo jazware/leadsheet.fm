@@ -208,7 +208,8 @@ func (s *Server) handleOAuthCallback(c echo.Context) error {
 	s.profiles.Resolve(resolveCtx, sess.AccountDID.String())
 	cancel()
 	go func(did string) {
-		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
+		// Detached from the request, but still in its trace.
+		ctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 2*time.Minute)
 		defer cancel()
 		if err := s.backfill.BackfillRepo(ctx, did); err != nil {
 			s.logger.Warn("backfilling signed-in account", "did", did, "error", err)

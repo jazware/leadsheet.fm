@@ -3,6 +3,8 @@ package ingest
 import (
 	"context"
 	"github.com/jazware/leadsheet.fm/pkg/httpclient"
+	"github.com/jazware/leadsheet.fm/pkg/tracing"
+	"go.opentelemetry.io/otel/attribute"
 	"log/slog"
 	"time"
 
@@ -48,7 +50,10 @@ func (r *ProfileResolver) Run(ctx context.Context) {
 			r.logger.Error("listing stale profiles", "error", err)
 		}
 		if len(dids) > 0 {
-			r.Resolve(ctx, dids...)
+			// (Only passes with work get a trace, not every tick.)
+			pctx, span := tracing.Start(ctx, "profiles.refresh", attribute.Int("accounts", len(dids)))
+			r.Resolve(pctx, dids...)
+			span.End()
 		}
 		select {
 		case <-ctx.Done():
