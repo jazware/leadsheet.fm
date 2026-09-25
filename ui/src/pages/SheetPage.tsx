@@ -8,7 +8,7 @@ import { api, KIND_LABEL, sheetInput, sheetPath, type SheetPage as SheetPageData
 import { chordsIn, parseChordPro, type Segment } from '@/lib/chordpro'
 import { embedFor, isWebLink, linkLabel } from '@/lib/links'
 import { keyText, keyUsesFlats, mod12, noteName, parseKey, pretty, simplifyQuality, type Quality } from '@/lib/music'
-import { getTuning, instrumentOf, isStandardShapes, shapeStrings, type Instrument } from '@/lib/tunings'
+import { getTuning, instrumentOf, isStandardShapes, shapeStrings, tuningsFor, type Instrument } from '@/lib/tunings'
 import { rememberSheet } from '@/lib/recent'
 import { useSheet, useSheetActions, useViewer } from '@/hooks/queries'
 import { usePref } from '@/hooks/usePref'
@@ -55,9 +55,13 @@ function useSheetControls(page: SheetPageData) {
   const [readAs, setReadAs] = usePref<Instrument | null>('readAs', null)
   const instrument = readAs ?? written
   const [capo, setCapo] = useState(instrument === written ? sheet.capo : 0)
+  // The reader's tuning, when not the one the sheet is for (not remembered:
+  // a sheet opens in its own tuning).
+  const [tuningId, setTuningId] = useState<string | null>(null)
   const setInstrument = (i: Instrument) => {
     setReadAs(i === written ? null : i)
     setCapo(i === written ? sheet.capo : 0)
+    setTuningId(null)
   }
   const [simplify, setSimplify] = useState(false)
   const [accidentals, setAccidentals] = useState<Accidentals>('auto')
@@ -66,7 +70,18 @@ function useSheetControls(page: SheetPageData) {
   const [scrolling, setScrolling] = useState(false)
   const [stage, setStage] = useState(false)
 
-  const shift = transpose + sheet.capo - capo
+  // The strings: the reader's tuning, or else the sheet's on its own
+  // instrument and standard on another; none on piano.
+  const sheetTuning = getTuning(sheet.tuning, sheet.kind)
+  const sheetShift = written === 'piano' ? 0 : sheetTuning.shift
+  const tuningKind = instrument === 'piano' ? null : instrument === written ? sheet.kind : KIND_OF[instrument]
+  const tunings = tuningKind ? tuningsFor(tuningKind) : []
+  const tuning = tuningKind ? getTuning(tuningId ?? (instrument === written ? sheet.tuning : 'standard'), tuningKind) : null
+  const asWritten = instrument === written && tuning?.id === sheetTuning.id
+  // Chords are named for the shapes played. The song sounds at the sheet's
+  // shapes plus its capo, less its tuning's drop; the reader's shapes are
+  // that, less their capo, plus their own tuning's drop.
+  const shift = transpose + sheet.capo - sheetShift - capo + (tuning?.shift ?? 0)
   // `key` is the key the chords are written in (shapes, relative to the
   // sheet's capo), which is what authors type.
   const key = parseKey(sheet.key)
@@ -96,12 +111,9 @@ function useSheetControls(page: SheetPageData) {
   // (moved, they'd be different shapes).
   const own = useMemo(() => sheetShapes(sheet.voicings), [sheet.voicings])
   const shapes = useMemo(
-    () => (shift === 0 && own.size && instrument === written ? { shapes: own, scope: sheet.uri } : null),
-    [shift, own, sheet.uri, instrument, written],
+    () => (shift === 0 && own.size && asWritten ? { shapes: own, scope: sheet.uri } : null),
+    [shift, own, sheet.uri, asWritten],
   )
-  // The strings: the sheet's tuning on its own instrument, another
-  // instrument's standard, none on piano.
-  const tuning = instrument === 'piano' ? null : instrument === written ? getTuning(sheet.tuning, sheet.kind) : getTuning('standard', KIND_OF[instrument])
   const strings = tuning ? shapeStrings(tuning) : []
   // Chord boxes and the play-through sound as the reader would play them:
   // their capo, the real tuning.
@@ -166,7 +178,7 @@ function useSheetControls(page: SheetPageData) {
     fontSize, setFontSize, speed, setSpeed, scrolling, setScrolling, stage, setStage,
     soundingKey, shapeKey,
     play, now, shapes, sound, capoable,
-    instrument, written, setInstrument, tuning, strings,
+    instrument, written, setInstrument, tuning, strings, sheetTuning, tunings, setTuningId,
     hearing: hearing !== null, bpm,
     // Clicking a chord while the chart plays carries on from there.
     // Returns whether it did (otherwise the chord just strums).
@@ -437,6 +449,38 @@ function InstrumentSwitch({ c, roomy }: { c: Controls; roomy?: boolean }) {
   )
 }
 
+/**
+ * The reader's tuning. Chords and shapes follow it, so they still sound
+ * like the song: down a half step, the shapes go up one.
+ */
+function TuningSelect({ c, roomy }: { c: Controls; roomy?: boolean }) {
+  if (!c.tuning) return null
+  const written = c.instrument === c.written ? c.sheetTuning.id : null
+  return (
+    <label className={clsx('flex items-center gap-2 font-extrabold text-ink-soft', roomy ? 'text-sm' : 'text-[0.75rem]')}>
+      <span className="w-12 shrink-0">Tuning</span>
+      <span className="relative min-w-0 flex-1">
+        <select
+          className={clsx(
+            'w-full appearance-none truncate rounded-full bg-surface-raised pl-3 pr-8 font-extrabold text-ink hover:text-chord',
+            roomy ? 'h-9 text-sm' : 'h-7 text-xs',
+          )}
+          value={c.tuning.id}
+          onChange={(e) => c.setTuningId(e.target.value)}
+        >
+          {c.tunings.map((t) => (
+            <option key={t.id} value={t.id}>
+              {t.name}
+              {t.id === written ? ' (as written)' : ''}
+            </option>
+          ))}
+        </select>
+        <ChevronDown className="pointer-events-none absolute right-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2" aria-hidden />
+      </span>
+    </label>
+  )
+}
+
 /** One of the playback buttons: an icon over a word. */
 function Tile({ icon, label, on, onClick, title }: { icon: React.ReactNode; label: string; on?: boolean; onClick: () => void; title?: string }) {
   return (
@@ -513,6 +557,7 @@ function SidebarControls({ c }: { c: Controls }) {
         )}
       </div>
       <InstrumentSwitch c={c} />
+      <TuningSelect c={c} />
       <SpellingRow c={c} textSize={c.capoable} />
       <div className="h-px bg-rule" />
       <div className="grid grid-cols-4 gap-1.5">
@@ -980,6 +1025,7 @@ function BottomBar({ c }: { c: Controls }) {
       {more && (
         <div className="mb-2 flex flex-col gap-3 rounded-[24px] border border-rule bg-surface p-3 shadow-float">
           <InstrumentSwitch c={c} roomy />
+          <TuningSelect c={c} roomy />
           <SpellingRow c={c} textSize />
           <div className="h-px bg-rule" />
           <PlaybackSettings c={c} roomy />
