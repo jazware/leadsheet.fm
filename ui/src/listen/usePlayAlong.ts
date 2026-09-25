@@ -8,7 +8,7 @@ import type { FromWorker, ToWorker } from './worker'
 export type PlayAlongState =
   | { status: 'off' }
   | { status: 'loading'; fraction: number }
-  | { status: 'listening'; now: Segment | null; heard: number | null; silent: boolean; offset: number }
+  | { status: 'listening'; now: Segment | null; heard: number | null; silent: boolean; offset: number; level: number }
   | { status: 'error'; message: string }
 
 /**
@@ -81,17 +81,18 @@ export function usePlayAlong(doc: Doc, prior: { offset: number; weight: number }
       const m = e.data
       if (id !== run.current) return // from a run that's been stopped
       if (m.type === 'progress') setState({ status: 'loading', fraction: m.fraction })
-      else if (m.type === 'ready') setState({ status: 'listening', now: null, heard: null, silent: true, offset: 0 })
+      else if (m.type === 'ready') setState({ status: 'listening', now: null, heard: null, silent: true, offset: 0, level: 0 })
       else if (m.type === 'error') {
         stopAudio.current?.()
         stopAudio.current = null
         setState({ status: 'error', message: `The chord listener stopped: ${m.message}` })
       } else if (m.type === 'position') {
         // Only re-render when something visible changes.
-        const key = `${m.index}|${m.heard}|${m.silent}|${m.offset}`
+        // (The level only matters to the nearest 10 dB: is anything coming in.)
+        const key = `${m.index}|${m.heard}|${m.silent}|${m.offset}|${Math.round(m.level / 10)}`
         if (key === last) return
         last = key
-        setState({ status: 'listening', now: sheet.segments[m.index] ?? null, heard: m.heard, silent: m.silent, offset: m.offset })
+        setState({ status: 'listening', now: sheet.segments[m.index] ?? null, heard: m.heard, silent: m.silent, offset: m.offset, level: m.level })
       }
     }
     w.postMessage({ type: 'start', chords: sheet.chords, sections: sheet.sections, prior: priorRef.current } satisfies ToWorker)

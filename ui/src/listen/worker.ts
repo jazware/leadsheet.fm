@@ -21,7 +21,7 @@ export type ToWorker =
 export type FromWorker =
   | { type: 'progress'; fraction: number }
   | { type: 'ready' }
-  | { type: 'position'; index: number; offset: number; heard: number | null; silent: boolean; delay: number }
+  | { type: 'position'; index: number; offset: number; heard: number | null; silent: boolean; delay: number; level: number }
   | { type: 'error'; message: string }
 
 const post = (m: FromWorker) => (self as unknown as Worker).postMessage(m)
@@ -66,7 +66,7 @@ self.onmessage = async (e: MessageEvent<ToWorker>) => {
       const follower = new Follower(m.chords, m.prior, m.sections)
       live = new LiveChords(btc, (f) => {
         const p = follower.step(f.probs)
-        post({ type: 'position', index: p.index, offset: p.offset, heard: p.heard, silent: p.silent, delay: f.delay })
+        post({ type: 'position', index: p.index, offset: p.offset, heard: p.heard, silent: p.silent, delay: f.delay, level: f.level })
       })
       post({ type: 'ready' })
     } else if (m.type === 'audio') {

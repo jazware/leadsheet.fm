@@ -2,7 +2,7 @@ import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import * as ort from 'onnxruntime-web'
-import { LiveChords } from './live'
+import { LiveChords, Leveler } from './live'
 import { Follower } from './follow'
 import { SR } from './cqt'
 import { btcChord } from './btc'
@@ -66,4 +66,34 @@ describe('play-along', () => {
     expect(played.map((_, k) => at(k * 2 + 1).index)).toEqual([0, 1, 2, 3, 4, 5, 6])
     expect(marks.at(-1)!.offset).toBe(2)
   }, 60_000)
+})
+
+describe('input leveling', () => {
+  it('follows a very quiet performance', async () => {
+    const dir = join(__dirname, 'model')
+    const session = await ort.InferenceSession.create(readFileSync(join(dir, 'btc.onnx')))
+    const norm = JSON.parse(readFileSync(join(dir, 'btc.norm.json'), 'utf8'))
+    const MIDI: Record<string, number[]> = { G: [55, 59, 62], D: [50, 54, 57], Em: [52, 55, 59], C: [48, 52, 55] }
+    const played = ['G', 'D', 'Em', 'C']
+    // About -70 dBFS: a guitar across the room from a laptop, no gain control.
+    const audio = synth(played.map((c) => MIDI[c]), 2).map((v) => v * 0.0003)
+    const follower = new Follower([7, 2, 4, 0].map((root, i) => ({ root, quality: i === 2 ? 'min' : 'maj' })), [{ offset: 0, weight: 1 }])
+    const marks: { time: number; index: number; level: number }[] = []
+    const live = new LiveChords({ session, Tensor: ort.Tensor, norm }, (f) => marks.push({ time: f.time, index: follower.step(f.probs).index, level: f.level }))
+    for (let i = 0; i < audio.length; i += 2048) {
+      live.push(audio.slice(i, i + 2048))
+      await new Promise((r) => setTimeout(r, 0))
+    }
+    // Once the leveler has caught up (a couple of seconds), it follows along.
+    const at = (t: number) => marks.find((m) => m.time >= t)!
+    expect([at(5).index, at(7).index]).toEqual([2, 3])
+    expect(marks.at(-1)!.level).toBeLessThan(-60)
+  }, 60_000)
+
+  it('leaves silence silent', () => {
+    const lv = new Leveler()
+    const out = lv.process(new Float32Array(22050).fill(1e-6))
+    expect(Math.max(...out)).toBeLessThan(1e-5)
+    expect(lv.level).toBeLessThan(-90)
+  })
 })

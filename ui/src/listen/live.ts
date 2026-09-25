@@ -18,6 +18,42 @@ export interface Frame {
   probs: Float32Array
   /** Seconds between this frame's centre and the newest audio. */
   delay: number
+  /** How loud the microphone is, before leveling (dBFS, RMS over a few seconds). */
+  level: number
+}
+
+// Input leveling. BTC learned from mastered recordings, and its features
+// are log-magnitudes, so a quiet microphone (a guitar across the room,
+// with the browser's own gain control off for fidelity) reads to it as
+// near-silence and it hears no chord at all. So the input is brought up to
+// recording level: slowly (a few seconds), so it doesn't pump; by at most
+// MAX_GAIN; and not at all below NOISE_FLOOR, so a silent room stays silent.
+const TARGET_RMS = 0.1
+const MAX_GAIN = 1000 // +60 dB
+const NOISE_FLOOR = 2e-5 // about -94 dBFS
+const LEVEL_SECONDS = 3
+
+export class Leveler {
+  private meanSquare = 0
+  private gain = 1
+
+  /** The input's recent level (dBFS). */
+  get level() {
+    return 10 * Math.log10(this.meanSquare + 1e-12)
+  }
+
+  process(chunk: Float32Array): Float32Array {
+    let sum = 0
+    for (const v of chunk) sum += v * v
+    const alpha = 1 - Math.exp(-chunk.length / (SR * LEVEL_SECONDS))
+    this.meanSquare += alpha * (sum / chunk.length - this.meanSquare)
+    const rms = Math.sqrt(this.meanSquare)
+    const want = rms < NOISE_FLOOR ? 1 : Math.min(MAX_GAIN, Math.max(1, TARGET_RMS / rms))
+    this.gain += 0.25 * (want - this.gain)
+    const out = new Float32Array(chunk.length)
+    for (let i = 0; i < chunk.length; i++) out[i] = Math.max(-1, Math.min(1, chunk[i] * this.gain))
+    return out
+  }
 }
 
 export class LiveChords {
@@ -29,13 +65,15 @@ export class LiveChords {
   private reported = 0
   private sinceRun = 0
   private busy = false
+  private leveler = new Leveler()
 
   constructor(
     private btc: BTC,
     private emit: (f: Frame) => void,
   ) {}
 
-  push(chunk: Float32Array) {
+  push(raw: Float32Array) {
+    const chunk = this.leveler.process(raw)
     if (this.length + chunk.length > this.samples.length) {
       // Drop old audio, keeping the last KEEP samples.
       const drop = this.length - KEEP
@@ -67,7 +105,13 @@ export class LiveChords {
         const row = this.reported - start
         if (row < 0) continue
         const time = (this.reported * HOP) / SR
-        this.emit({ index: this.reported, time, probs: probs.slice(row * N_CHORDS, (row + 1) * N_CHORDS), delay: now - time })
+        this.emit({
+          index: this.reported,
+          time,
+          probs: probs.slice(row * N_CHORDS, (row + 1) * N_CHORDS),
+          delay: now - time,
+          level: this.leveler.level,
+        })
       }
     } finally {
       this.busy = false

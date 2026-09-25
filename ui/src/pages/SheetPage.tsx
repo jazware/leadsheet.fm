@@ -643,6 +643,8 @@ function PlayAlongStatus({ c }: { c: Controls }) {
   }
   if (s.status === 'error') return <>{s.message}</>
   if (s.status !== 'listening') return null
+  // Next to nothing coming in: not quiet playing, a muted or wrong input.
+  if (s.level < -80) return <>I can't hear the microphone. Check it's the right input and isn't muted.</>
   if (s.silent || s.heard === null) return <>Listening. Start playing whenever you're ready.</>
   const h = btcChord(s.heard)!
   // Name it as the page would: undo the offset the audio showed, apply the page's shift.
@@ -839,7 +841,7 @@ function Stage({ page, c }: { page: SheetPageData; c: Controls }) {
   const tuning = getTuning(page.sheet.tuning, page.sheet.kind)
   const stageTips = { strings: shapeStrings(tuning) }
   const ref = useRef<HTMLDivElement>(null)
-  const [progress, setProgress] = useState(0)
+  const bar = useRef<HTMLDivElement>(null)
   const { setStage, setScrolling } = c
   useAutoScroll(c.scrolling, c.speed, ref, () => setScrolling(false))
   useFollowScroll(c.now, ref, ref, true)
@@ -849,20 +851,30 @@ function Stage({ page, c }: { page: SheetPageData; c: Controls }) {
     if (!el) return
     document.body.style.overflow = 'hidden'
     let frame = 0
+    let shownCurrent: Element | null = null
+    // Runs every frame while scrolling, so: all the reads, then only the
+    // writes that change anything. (Reading a line's position after writing
+    // to the one before forces a layout per line; with a whole sheet of
+    // lines, that's what made autoscroll stutter on phones.) The progress bar
+    // is set directly rather than through state, which would re-render the
+    // whole sheet every frame.
     const update = () => {
       frame = 0
       const max = el.scrollHeight - el.clientHeight
-      setProgress(max > 0 ? el.scrollTop / max : 0)
+      if (bar.current) bar.current.style.width = `${(max > 0 ? el.scrollTop / max : 0) * 100}%`
       // The reading line sits a third of the way down the screen.
       const reading = el.getBoundingClientRect().top + el.clientHeight * 0.33
-      let current: Element | null = null
-      for (const line of el.querySelectorAll('[data-line]')) {
-        const r = line.getBoundingClientRect()
-        line.toggleAttribute('data-past', r.bottom < reading)
-        line.removeAttribute('data-current')
-        if (!current && r.bottom >= reading) current = line
+      const lines = [...el.querySelectorAll('[data-line]')]
+      const past = lines.map((line) => line.getBoundingClientRect().bottom < reading)
+      const current = lines[past.indexOf(false)] ?? null
+      lines.forEach((line, i) => {
+        if (line.hasAttribute('data-past') !== past[i]) line.toggleAttribute('data-past', past[i])
+      })
+      if (current !== shownCurrent) {
+        shownCurrent?.removeAttribute('data-current')
+        current?.setAttribute('data-current', '')
+        shownCurrent = current
       }
-      current?.setAttribute('data-current', '')
     }
     const onScroll = () => {
       if (!frame) frame = requestAnimationFrame(update)
@@ -900,7 +912,7 @@ function Stage({ page, c }: { page: SheetPageData; c: Controls }) {
       )}
       <div className="mx-auto mt-3 w-full max-w-3xl px-6">
         <div className="h-1 rounded-full bg-surface">
-          <div className="h-1 rounded-full bg-chord" style={{ width: `${progress * 100}%` }} />
+          <div ref={bar} className="h-1 w-0 rounded-full bg-chord" />
         </div>
       </div>
       <div ref={ref} className="stage flex-1 overflow-y-auto">
@@ -936,23 +948,29 @@ function useAutoScroll(
   end.current = onEnd
   useEffect(() => {
     if (!running) return
+    // Scroll in device pixels, tracking the position exactly. Whole CSS
+    // pixels at ~20 px/s meant a visible jump every few frames on a phone,
+    // where a CSS pixel is 2 or 3 screen pixels.
+    const dpr = window.devicePixelRatio || 1
+    const el = target?.current ?? null
+    const get = () => (el ? el.scrollTop : window.scrollY)
+    const set = (y: number) => (el ? (el.scrollTop = y) : window.scrollTo(0, y))
+    const atEnd = () =>
+      el ? el.scrollTop + el.clientHeight >= el.scrollHeight - 1 : window.innerHeight + window.scrollY >= document.documentElement.scrollHeight - 1
+    let pos = get()
+    let wrote = pos
     let last = performance.now()
-    let carry = 0
     let frame = 0
     const tick = (now: number) => {
-      carry += ((now - last) / 1000) * speed * 7
+      // Someone scrolled by hand: carry on from where they left it.
+      if (Math.abs(get() - wrote) > 2) pos = get()
+      pos += ((now - last) / 1000) * speed * 7
       last = now
-      const px = Math.floor(carry)
-      if (px > 0) {
-        carry -= px
-        const el = target?.current
-        if (el) {
-          el.scrollTop += px
-          if (el.scrollTop + el.clientHeight >= el.scrollHeight - 1) return end.current()
-        } else {
-          window.scrollBy(0, px)
-          if (window.innerHeight + window.scrollY >= document.body.scrollHeight - 1) return end.current()
-        }
+      const y = Math.round(pos * dpr) / dpr
+      if (y !== wrote) {
+        set(y)
+        wrote = y
+        if (atEnd()) return end.current()
       }
       frame = requestAnimationFrame(tick)
     }
