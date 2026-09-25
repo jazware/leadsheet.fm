@@ -107,7 +107,10 @@ export function ChordDiagram({
   )
 
   return (
-    <figure className="flex w-[4.9rem] shrink-0 flex-col items-center rounded-2xl bg-surface px-1 pb-1.5 pt-2.5">
+    // relative: the screen-reader-only counter text is absolutely positioned,
+    // and must stay inside the box (in the phone's scrolling Shapes strip
+    // it otherwise widens the whole page).
+    <figure className="relative flex w-[4.9rem] shrink-0 flex-col items-center rounded-2xl bg-surface px-1 pb-1.5 pt-2.5">
       <figcaption className="mb-1 text-base font-black leading-none text-chord">
         {pretty(label)}
       </figcaption>
