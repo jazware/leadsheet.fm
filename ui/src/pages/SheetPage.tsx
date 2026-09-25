@@ -3,7 +3,7 @@ import { createPortal } from 'react-dom'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import { clsx } from 'clsx'
 import { useQueryClient } from '@tanstack/react-query'
-import { ArrowLeft, Bookmark, ExternalLink, GitFork, Maximize2, Mic, MicOff, Minus, Pause, Pencil, Play, Plus, Printer, Square, Type, Volume2, X } from 'lucide-react'
+import { ArrowLeft, Bookmark, ExternalLink, GitFork, Maximize2, Mic, MicOff, Minus, Pause, Pencil, Play, Plus, Printer, SlidersHorizontal, Square, Volume2, X } from 'lucide-react'
 import { api, KIND_LABEL, sheetInput, sheetPath, type SheetPage as SheetPageData } from '@/lib/api'
 import { chordsIn, parseChordPro, type Segment } from '@/lib/chordpro'
 import { embedFor, isWebLink, linkLabel } from '@/lib/links'
@@ -209,6 +209,8 @@ function SheetScreen({ page, actor }: { page: SheetPageData; actor: string }) {
   useAutoScroll(c.scrolling && !c.stage, c.speed, null, () => c.setScrolling(false))
   useWakeLock(c.scrolling || c.stage || c.play.active || c.hearing)
   const sheetRef = useRef<HTMLDivElement>(null)
+  const railRef = useRef<HTMLDivElement>(null)
+  useFitWindow(railRef)
   useFollowScroll(c.now, sheetRef, null, !c.stage)
   const { shapes, sound } = c
 
@@ -258,10 +260,10 @@ function SheetScreen({ page, actor }: { page: SheetPageData; actor: string }) {
             <Related page={page} />
           </div>
           <aside className="no-print hidden lg:block">
-            {/* Never taller than the window: the shapes scroll inside it (see
-                ScrollShapes). On a window too short even for two rows of them,
-                the card itself scrolls. */}
-            <div className="card sticky top-4 flex max-h-[calc(100dvh-2rem)] flex-col gap-4 overflow-y-auto p-4">
+            {/* Never past the bottom of the window: the shapes scroll inside
+                it (see ScrollShapes). On a window too short even for two rows
+                of them, the card itself scrolls. */}
+            <div ref={railRef} className="card sticky top-4 flex max-h-[calc(100dvh-2rem)] flex-col gap-4 overflow-y-auto p-4">
               <div className="flex shrink-0 flex-col gap-4">
                 <SidebarControls c={c} />
               </div>
@@ -334,6 +336,35 @@ function ScrollShapes({ label, children }: { label: React.ReactNode; children: R
   )
 }
 
+/**
+ * Keeps a sticky card's bottom inside the window. Its CSS max height fits
+ * once it has stuck to the top; until then it starts lower down (under the
+ * header and title), so the height left below it is less.
+ */
+function useFitWindow(ref: React.RefObject<HTMLElement | null>) {
+  useEffect(() => {
+    const el = ref.current
+    if (!el) return
+    let frame = 0
+    const fit = () => {
+      frame = 0
+      const top = Math.max(16, el.getBoundingClientRect().top)
+      el.style.maxHeight = `${window.innerHeight - top - 16}px`
+    }
+    const queue = () => {
+      if (!frame) frame = requestAnimationFrame(fit)
+    }
+    fit()
+    window.addEventListener('scroll', queue, { passive: true })
+    window.addEventListener('resize', queue)
+    return () => {
+      cancelAnimationFrame(frame)
+      window.removeEventListener('scroll', queue)
+      window.removeEventListener('resize', queue)
+    }
+  }, [ref])
+}
+
 /** A small − value + stepper, for the compact controls. */
 function Mini({ label, value, sub, onStep, onReset }: { label: string; value: string; sub?: string; onStep: (d: number) => void; onReset?: () => void }) {
   return (
@@ -360,7 +391,7 @@ const keyLabel = (c: Controls) =>
 const transposeLabel = (c: Controls) => (c.transpose === 0 ? 'original key' : `${c.transpose > 0 ? '+' : ''}${c.transpose} semitones`)
 
 /** Guitar / Uke / Bass / Piano as one segmented switch. */
-function InstrumentSwitch({ c }: { c: Controls }) {
+function InstrumentSwitch({ c, roomy }: { c: Controls; roomy?: boolean }) {
   const short: Record<Instrument, string> = { guitar: 'Guitar', ukulele: 'Uke', bass: 'Bass', piano: 'Piano' }
   return (
     <div role="radiogroup" aria-label="Show the chords for" className="grid grid-cols-4 gap-0.5 rounded-full bg-surface-raised p-1">
@@ -372,7 +403,7 @@ function InstrumentSwitch({ c }: { c: Controls }) {
           aria-checked={c.instrument === i}
           onClick={() => c.setInstrument(i)}
           title={i === c.written ? `${INSTRUMENT_NAME[i]}, as the sheet is written` : `For ${INSTRUMENT_NAME[i].toLowerCase()}, at sounding pitch`}
-          className={clsx('relative h-7 rounded-full text-xs font-extrabold', c.instrument === i ? 'bg-glow text-glow-ink' : 'text-ink-soft hover:text-ink')}
+          className={clsx('relative rounded-full font-extrabold', roomy ? 'h-9 text-sm' : 'h-7 text-xs', c.instrument === i ? 'bg-glow text-glow-ink' : 'text-ink-soft hover:text-ink')}
         >
           {short[i]}
           {i === c.written && <span className="absolute right-1.5 top-1 h-1 w-1 rounded-full bg-current opacity-60" aria-hidden />}
@@ -399,23 +430,48 @@ function Tile({ icon, label, on, onClick, title }: { icon: React.ReactNode; labe
 }
 
 /** Speed and tempo, as one line each. */
-function PlaybackSettings({ c }: { c: Controls }) {
+function PlaybackSettings({ c, roomy }: { c: Controls; roomy?: boolean }) {
+  const step = clsx('flex items-center justify-center rounded-full bg-surface-raised hover:text-ink', roomy ? 'h-9 w-9' : 'h-7 w-7')
   return (
-    <div className="flex flex-col gap-1.5 text-[0.75rem] font-extrabold text-ink-soft">
+    <div className={clsx('flex flex-col font-extrabold text-ink-soft', roomy ? 'gap-2 text-sm' : 'gap-1.5 text-[0.75rem]')}>
       <label className="flex items-center gap-2">
         <span className="w-12 shrink-0">Scroll</span>
         <SpeedSlider c={c} />
       </label>
       <div className="flex items-center gap-2">
         <span className="w-12 shrink-0">Tempo</span>
-        <button type="button" className="flex h-7 w-7 items-center justify-center rounded-full bg-surface-raised hover:text-ink" onClick={() => c.stepBpm(-1)} aria-label="Tempo down">
+        <button type="button" className={step} onClick={() => c.stepBpm(-1)} aria-label="Tempo down">
           <Minus className="h-3 w-3" aria-hidden />
         </button>
-        <span className="w-14 text-center text-ink">{c.bpm} bpm</span>
-        <button type="button" className="flex h-7 w-7 items-center justify-center rounded-full bg-surface-raised hover:text-ink" onClick={() => c.stepBpm(1)} aria-label="Tempo up">
+        <span className={clsx('text-center text-ink', roomy ? 'w-16' : 'w-14')}>{c.bpm} bpm</span>
+        <button type="button" className={step} onClick={() => c.stepBpm(1)} aria-label="Tempo up">
           <Plus className="h-3 w-3" aria-hidden />
         </button>
       </div>
+    </div>
+  )
+}
+
+/** Simplify, sharps or flats, and (where there's room) text size, in one row. */
+function SpellingRow({ c, textSize }: { c: Controls; textSize: boolean }) {
+  return (
+    <div className="flex flex-wrap items-center gap-1.5">
+      <button type="button" aria-pressed={c.simplify} onClick={() => c.setSimplify(!c.simplify)} className={clsx('btn btn-sm', c.simplify ? 'btn-on' : 'bg-surface-raised')}>
+        Simplify
+      </button>
+      <button type="button" onClick={c.toggleAccidentals} className="btn btn-sm bg-surface-raised" title="Spell chords with sharps or flats">
+        {c.flats ? '♭ flats' : '♯ sharps'}
+      </button>
+      {textSize && (
+        <span className="ml-auto flex items-center rounded-full bg-surface-raised" title="Text size">
+          <button type="button" className="flex h-9 w-8 items-center justify-center text-xs font-black" onClick={() => c.setFontSize(Math.max(14, c.fontSize - 1))} aria-label="Smaller text">
+            A
+          </button>
+          <button type="button" className="flex h-9 w-8 items-center justify-center text-base font-black" onClick={() => c.setFontSize(Math.min(34, c.fontSize + 1))} aria-label="Larger text">
+            A
+          </button>
+        </span>
+      )}
     </div>
   )
 }
@@ -433,24 +489,7 @@ function SidebarControls({ c }: { c: Controls }) {
         )}
       </div>
       <InstrumentSwitch c={c} />
-      <div className="flex flex-wrap items-center gap-1.5">
-        <button type="button" aria-pressed={c.simplify} onClick={() => c.setSimplify(!c.simplify)} className={clsx('btn btn-sm', c.simplify ? 'btn-on' : 'bg-surface-raised')}>
-          Simplify
-        </button>
-        <button type="button" onClick={c.toggleAccidentals} className="btn btn-sm bg-surface-raised" title="Spell chords with sharps or flats">
-          {c.flats ? '♭ flats' : '♯ sharps'}
-        </button>
-        {c.capoable && (
-          <span className="ml-auto flex items-center rounded-full bg-surface-raised" title="Text size">
-            <button type="button" className="flex h-9 w-8 items-center justify-center text-xs font-black" onClick={() => c.setFontSize(Math.max(14, c.fontSize - 1))} aria-label="Smaller text">
-              A
-            </button>
-            <button type="button" className="flex h-9 w-8 items-center justify-center text-base font-black" onClick={() => c.setFontSize(Math.min(34, c.fontSize + 1))} aria-label="Larger text">
-              A
-            </button>
-          </span>
-        )}
-      </div>
+      <SpellingRow c={c} textSize={c.capoable} />
       <div className="h-px bg-rule" />
       <div className="grid grid-cols-4 gap-1.5">
         <Tile
@@ -865,52 +904,6 @@ function useFollowScroll(
   }, [now, root, scroller, enabled])
 }
 
-/** Which instrument to show the chords for: the sheet's, or the reader's own. */
-function InstrumentPicker({ c }: { c: Controls }) {
-  return (
-    <div>
-      <div className="label">Show for</div>
-      <div role="radiogroup" aria-label="Show the chords for" className="flex flex-wrap gap-2">
-        {(['guitar', 'ukulele', 'bass', 'piano'] as const).map((i) => (
-          <button
-            key={i}
-            type="button"
-            role="radio"
-            aria-checked={c.instrument === i}
-            onClick={() => c.setInstrument(i)}
-            className={clsx('btn btn-sm', c.instrument === i ? 'btn-on' : 'bg-bg lg:bg-surface-raised')}
-            title={i === c.written ? 'As the sheet is written' : `The chords at their sounding pitch, for ${INSTRUMENT_NAME[i].toLowerCase()}`}
-          >
-            {INSTRUMENT_NAME[i]}
-            {i === c.written && <span className="text-xs font-bold opacity-60"> · as written</span>}
-          </button>
-        ))}
-      </div>
-    </div>
-  )
-}
-
-function ChordToggles({ c }: { c: Controls }) {
-  return (
-    <div>
-      <div className="label">Chords</div>
-      <div className="flex flex-wrap gap-2">
-        <button
-          type="button"
-          aria-pressed={c.simplify}
-          onClick={() => c.setSimplify(!c.simplify)}
-          className={clsx('btn btn-sm', c.simplify ? 'btn-on' : 'bg-bg lg:bg-surface-raised')}
-        >
-          Simplify
-        </button>
-        <button type="button" onClick={c.toggleAccidentals} className="btn btn-sm bg-bg lg:bg-surface-raised" title="Spell chords with sharps or flats">
-          {c.flats ? '♭ flats' : '♯ sharps'}
-        </button>
-      </div>
-    </div>
-  )
-}
-
 function SpeedSlider({ c }: { c: Controls }) {
   return (
     <input
@@ -922,47 +915,6 @@ function SpeedSlider({ c }: { c: Controls }) {
       aria-label="Scroll speed"
       className="w-full accent-[rgb(var(--chord))]"
     />
-  )
-}
-
-function Stepper({
-  label,
-  value,
-  detail,
-  onStep,
-  onReset,
-  bare,
-}: {
-  label: string
-  value: string
-  detail?: string
-  onStep: (d: number) => void
-  onReset?: () => void
-  /** Without its label (it's beside a button that says what it's for). */
-  bare?: boolean
-}) {
-  return (
-    <div>
-      {!bare && <div className="label">{label}</div>}
-      <div className="flex items-center gap-1">
-        <button type="button" className="btn bg-bg px-0 lg:bg-surface-raised" onClick={() => onStep(-1)} aria-label={`${label} down`}>
-          <Minus className="h-4 w-4" aria-hidden />
-        </button>
-        <button
-          type="button"
-          className="min-w-[5.5rem] px-1 text-center font-extrabold disabled:cursor-default"
-          onClick={onReset}
-          disabled={!onReset}
-          title={onReset ? 'Reset' : undefined}
-        >
-          {value}
-        </button>
-        <button type="button" className="btn bg-bg px-0 lg:bg-surface-raised" onClick={() => onStep(1)} aria-label={`${label} up`}>
-          <Plus className="h-4 w-4" aria-hidden />
-        </button>
-      </div>
-      {detail && <div className="mt-1 text-xs font-bold text-ink-soft">{detail}</div>}
-    </div>
   )
 }
 
@@ -1000,36 +952,27 @@ function BottomBar({ c }: { c: Controls }) {
         </div>
       )}
       {more && (
-        <div className="mb-2 flex flex-col gap-4 rounded-[24px] border border-rule bg-surface p-4 shadow-float">
-          <Stepper
-            label="Text size"
-            value={`${c.fontSize}px`}
-            onStep={(d) => c.setFontSize(Math.max(14, Math.min(34, c.fontSize + d)))}
-          />
-          <InstrumentPicker c={c} />
-          <ChordToggles c={c} />
-          <div>
-            <div className="label">Scroll speed</div>
-            <SpeedSlider c={c} />
+        <div className="mb-2 flex flex-col gap-3 rounded-[24px] border border-rule bg-surface p-3 shadow-float">
+          <InstrumentSwitch c={c} roomy />
+          <SpellingRow c={c} textSize />
+          <div className="h-px bg-rule" />
+          <PlaybackSettings c={c} roomy />
+          <div className="grid grid-cols-2 gap-2">
+            <Tile
+              icon={c.hearing ? <Square className="h-4 w-4 fill-current" aria-hidden /> : <Volume2 className="h-4 w-4" aria-hidden />}
+              label={c.hearing ? 'Stop' : 'Hear the chords'}
+              on={c.hearing}
+              onClick={c.toggleHearing}
+            />
+            <Tile
+              icon={<Maximize2 className="h-4 w-4" aria-hidden />}
+              label="Stage mode"
+              onClick={() => {
+                setMore(false)
+                c.setStage(true)
+              }}
+            />
           </div>
-          <div>
-            <div className="label">Hear the chords</div>
-            <div className="flex items-center gap-3">
-              <HearButton c={c} size="md" />
-              <Stepper label="Tempo" value={`${c.bpm} bpm`} onStep={c.stepBpm} bare />
-            </div>
-          </div>
-          <button
-            type="button"
-            className="btn btn-primary"
-            onClick={() => {
-              setMore(false)
-              c.setStage(true)
-            }}
-          >
-            <Maximize2 className="h-4 w-4" aria-hidden />
-            Stage mode
-          </button>
         </div>
       )}
       <div className="flex items-center justify-between rounded-[28px] border border-rule bg-surface px-1.5 py-1.5 shadow-float">
@@ -1041,10 +984,10 @@ function BottomBar({ c }: { c: Controls }) {
           type="button"
           className={clsx('btn h-12 w-11 bg-transparent px-0', more && 'btn-on')}
           aria-expanded={more}
-          aria-label="Text size, chord spelling and stage mode"
+          aria-label="More controls"
           onClick={() => setMore(!more)}
         >
-          <Type className="h-5 w-5" aria-hidden />
+          <SlidersHorizontal className="h-5 w-5" aria-hidden />
         </button>
       </div>
     </div>,
