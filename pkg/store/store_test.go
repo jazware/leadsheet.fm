@@ -42,13 +42,57 @@ func TestSheetsRatingsForks(t *testing.T) {
 	shaped := sheet("Shaped", "Oasis", "[C]la", "2026-01-03T00:00:00Z")
 	shaped.Voicings = []records.Voicing{{Chord: "C", Frets: []int64{-1, 3, 2, 0, 1, 3}}}
 	must(st.UpsertSheet(ctx, "did:plc:b", "9", "cid9", shaped))
-	if got, err := st.GetSheet(ctx, SheetURI("did:plc:b", "9")); err != nil || string(got.Voicings) != `[{"chord": "C", "frets": [-1, 3, 2, 0, 1, 3]}]` {
+	if got, err := st.GetSheet(ctx, SheetURI("did:plc:b", "9"), ""); err != nil || string(got.Voicings) != `[{"chord": "C", "frets": [-1, 3, 2, 0, 1, 3]}]` {
 		t.Fatalf("voicings = %s, %v", got.Voicings, err)
 	}
-	if got, err := st.GetSheet(ctx, SheetURI("did:plc:b", "3")); err != nil || string(got.Voicings) != `[]` {
+	if got, err := st.GetSheet(ctx, SheetURI("did:plc:b", "3"), ""); err != nil || string(got.Voicings) != `[]` {
 		t.Fatalf("no voicings = %s, %v", got.Voicings, err)
 	}
 	must(st.DeleteSheet(ctx, SheetURI("did:plc:b", "9")))
+
+	// A draft: its author sees it; nobody else, nor any list, search or count.
+	draft := sheet("Wonderwall (acoustic)", "Oasis", "[Em7]Today is gonna be the day", "2026-01-04T00:00:00Z")
+	draft.Draft = true
+	draft.ForkOf = &records.StrongRef{URI: SheetURI("did:plc:a", "1"), CID: "cid1"}
+	must(st.UpsertSheet(ctx, "did:plc:c", "d1", "cidd1", draft))
+	durl := SheetURI("did:plc:c", "d1")
+	if _, err := st.GetSheet(ctx, durl, ""); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("draft visible to anyone: %v", err)
+	}
+	if _, err := st.GetSheet(ctx, durl, "did:plc:b"); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("draft visible to another account: %v", err)
+	}
+	if got, err := st.GetSheet(ctx, durl, "did:plc:c"); err != nil || !got.Draft {
+		t.Fatalf("author can't see their draft: %+v %v", got, err)
+	}
+	if ds, err := st.Drafts(ctx, "did:plc:c"); err != nil || len(ds) != 1 || ds[0].URI != durl {
+		t.Fatalf("drafts = %+v, %v", ds, err)
+	}
+	if mine, _ := st.SheetsByDID(ctx, "did:plc:c"); len(mine) != 0 {
+		t.Fatalf("draft in the author's public sheets: %+v", mine)
+	}
+	for _, q := range []string{"wonderwall", "acoustic"} {
+		res, err := st.Search(ctx, q, 10)
+		must(err)
+		for _, r := range res {
+			if r.Top.URI == durl || r.Title == "Wonderwall (acoustic)" {
+				t.Fatalf("draft in search for %q: %+v", q, r)
+			}
+		}
+	}
+	if parent, _ := st.GetSheetSummary(ctx, SheetURI("did:plc:a", "1")); parent.Stats.ForkCount != 1 {
+		t.Fatalf("draft counted as a fork: %d", parent.Stats.ForkCount)
+	}
+	// Published: it shows up like any sheet, and counts as a fork.
+	draft.Draft = false
+	must(st.UpsertSheet(ctx, "did:plc:c", "d1", "cidd2", draft))
+	if _, err := st.GetSheet(ctx, durl, ""); err != nil {
+		t.Fatalf("published draft not found: %v", err)
+	}
+	if parent, _ := st.GetSheetSummary(ctx, SheetURI("did:plc:a", "1")); parent.Stats.ForkCount != 2 {
+		t.Fatalf("published fork not counted: %d", parent.Stats.ForkCount)
+	}
+	must(st.DeleteSheet(ctx, durl))
 
 	// Same song despite the "(Acoustic)" and "The".
 	song, err := st.GetSong(ctx, "oasis", "wonderwall")
@@ -68,12 +112,12 @@ func TestSheetsRatingsForks(t *testing.T) {
 	must(st.UpsertFavorite(ctx, "at://did:plc:c/fm.leadsheet.favorite/1", "did:plc:c",
 		&records.Favorite{Subject: records.StrongRef{URI: v2}, CreatedAt: "2026-02-01T00:00:00Z"}))
 
-	got, err := st.GetSheet(ctx, v2)
+	got, err := st.GetSheet(ctx, v2, "")
 	must(err)
 	if got.Stats.RatingCount != 2 || got.Stats.RatingAvg != 4.5 || got.Stats.FavoriteCount != 1 {
 		t.Fatalf("v2 stats = %+v", got.Stats)
 	}
-	orig, err := st.GetSheet(ctx, v1)
+	orig, err := st.GetSheet(ctx, v1, "")
 	must(err)
 	if orig.Stats.ForkCount != 1 {
 		t.Fatalf("v1 fork count = %d", orig.Stats.ForkCount)
@@ -93,7 +137,7 @@ func TestSheetsRatingsForks(t *testing.T) {
 
 	// Deleting the newer rating brings back the older one.
 	must(st.DeleteRating(ctx, "at://did:plc:b/fm.leadsheet.rating/2"))
-	got, _ = st.GetSheet(ctx, v2)
+	got, _ = st.GetSheet(ctx, v2, "")
 	if got.Stats.RatingAvg != 3 {
 		t.Fatalf("avg after delete = %v, want 3", got.Stats.RatingAvg)
 	}
@@ -150,12 +194,12 @@ func TestSheetsRatingsForks(t *testing.T) {
 
 	// Hidden accounts vanish; deleting the fork updates the fork count.
 	must(st.SetHidden(ctx, "did:plc:b", true))
-	if _, err := st.GetSheet(ctx, v2); !errors.Is(err, ErrNotFound) {
+	if _, err := st.GetSheet(ctx, v2, ""); !errors.Is(err, ErrNotFound) {
 		t.Fatalf("hidden sheet: err = %v", err)
 	}
 	must(st.SetHidden(ctx, "did:plc:b", false))
 	must(st.PurgeAccount(ctx, "did:plc:b"))
-	orig, _ = st.GetSheet(ctx, v1)
+	orig, _ = st.GetSheet(ctx, v1, "")
 	if orig.Stats.ForkCount != 0 {
 		t.Fatalf("fork count after purge = %d", orig.Stats.ForkCount)
 	}

@@ -68,7 +68,11 @@ func (s *Server) handleGetSheet(c echo.Context) error {
 	if err != nil {
 		return err
 	}
-	sheet, err := s.store.GetSheet(ctx, uri)
+	me := ""
+	if ws := viewer(c); ws != nil {
+		me = ws.DID.String()
+	}
+	sheet, err := s.store.GetSheet(ctx, uri, me) // a draft only for its author
 	if err != nil {
 		return notFoundOr(err, "sheet")
 	}
@@ -144,5 +148,14 @@ func (s *Server) handleGetProfile(c echo.Context) error {
 	if err != nil {
 		return err
 	}
-	return c.JSON(http.StatusOK, map[string]any{"author": author, "sheets": sheets, "favorites": favorites})
+	resp := map[string]any{"author": author, "sheets": sheets, "favorites": favorites}
+	// Your own profile lists your drafts too.
+	if ws := viewer(c); ws != nil && ws.DID.String() == did {
+		drafts, err := s.store.Drafts(ctx, did)
+		if err != nil {
+			return err
+		}
+		resp["drafts"] = drafts
+	}
+	return c.JSON(http.StatusOK, resp)
 }

@@ -40,7 +40,7 @@ func (q *Queries) AccountSubjects(ctx context.Context, did string) ([]string, er
 }
 
 const artistSheets = `-- name: ArtistSheets :many
-SELECT uri, did, rkey, cid, title, artist, album, artist_slug, title_slug, kind, key, capo, tuning, difficulty, tags, fork_of_uri, fork_of_cid, created_at, updated_at, handle, display_name, avatar, rating_count, rating_avg, rating_score, favorite_count, fork_count FROM sheet_summaries WHERE artist_slug = $1 ORDER BY title_slug
+SELECT uri, did, rkey, cid, title, artist, album, artist_slug, title_slug, kind, key, capo, tuning, difficulty, tags, fork_of_uri, fork_of_cid, created_at, updated_at, draft, handle, display_name, avatar, rating_count, rating_avg, rating_score, favorite_count, fork_count FROM sheet_summaries WHERE artist_slug = $1 ORDER BY title_slug
 `
 
 func (q *Queries) ArtistSheets(ctx context.Context, artistSlug string) ([]SheetSummary, error) {
@@ -72,6 +72,7 @@ func (q *Queries) ArtistSheets(ctx context.Context, artistSlug string) ([]SheetS
 			&i.ForkOfCid,
 			&i.CreatedAt,
 			&i.UpdatedAt,
+			&i.Draft,
 			&i.Handle,
 			&i.DisplayName,
 			&i.Avatar,
@@ -361,6 +362,59 @@ func (q *Queries) DeleteWebSessionsBefore(ctx context.Context, createdAt time.Ti
 	return err
 }
 
+const draftsByDID = `-- name: DraftsByDID :many
+SELECT uri, did, rkey, cid, title, artist, album, artist_slug, title_slug, kind, key, capo, tuning, difficulty, tags, fork_of_uri, fork_of_cid, created_at, updated_at, draft, handle, display_name, avatar, rating_count, rating_avg, rating_score, favorite_count, fork_count FROM sheet_summaries_all WHERE did = $1 AND draft ORDER BY updated_at DESC
+`
+
+func (q *Queries) DraftsByDID(ctx context.Context, did string) ([]SheetSummariesAll, error) {
+	rows, err := q.db.Query(ctx, draftsByDID, did)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []SheetSummariesAll{}
+	for rows.Next() {
+		var i SheetSummariesAll
+		if err := rows.Scan(
+			&i.Uri,
+			&i.Did,
+			&i.Rkey,
+			&i.Cid,
+			&i.Title,
+			&i.Artist,
+			&i.Album,
+			&i.ArtistSlug,
+			&i.TitleSlug,
+			&i.Kind,
+			&i.Key,
+			&i.Capo,
+			&i.Tuning,
+			&i.Difficulty,
+			&i.Tags,
+			&i.ForkOfUri,
+			&i.ForkOfCid,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+			&i.Draft,
+			&i.Handle,
+			&i.DisplayName,
+			&i.Avatar,
+			&i.RatingCount,
+			&i.RatingAvg,
+			&i.RatingScore,
+			&i.FavoriteCount,
+			&i.ForkCount,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const ensureProfile = `-- name: EnsureProfile :exec
 INSERT INTO profiles (did) VALUES ($1) ON CONFLICT DO NOTHING
 `
@@ -371,7 +425,7 @@ func (q *Queries) EnsureProfile(ctx context.Context, did string) error {
 }
 
 const favoriteSheets = `-- name: FavoriteSheets :many
-SELECT ss.uri, ss.did, ss.rkey, ss.cid, ss.title, ss.artist, ss.album, ss.artist_slug, ss.title_slug, ss.kind, ss.key, ss.capo, ss.tuning, ss.difficulty, ss.tags, ss.fork_of_uri, ss.fork_of_cid, ss.created_at, ss.updated_at, ss.handle, ss.display_name, ss.avatar, ss.rating_count, ss.rating_avg, ss.rating_score, ss.favorite_count, ss.fork_count FROM sheet_summaries ss
+SELECT ss.uri, ss.did, ss.rkey, ss.cid, ss.title, ss.artist, ss.album, ss.artist_slug, ss.title_slug, ss.kind, ss.key, ss.capo, ss.tuning, ss.difficulty, ss.tags, ss.fork_of_uri, ss.fork_of_cid, ss.created_at, ss.updated_at, ss.draft, ss.handle, ss.display_name, ss.avatar, ss.rating_count, ss.rating_avg, ss.rating_score, ss.favorite_count, ss.fork_count FROM sheet_summaries ss
 JOIN (SELECT fv.subject_uri, MAX(fv.created_at) AS faved_at FROM favorites fv WHERE fv.did = $1 GROUP BY fv.subject_uri) f
     ON f.subject_uri = ss.uri
 ORDER BY f.faved_at DESC
@@ -406,6 +460,7 @@ func (q *Queries) FavoriteSheets(ctx context.Context, did string) ([]SheetSummar
 			&i.ForkOfCid,
 			&i.CreatedAt,
 			&i.UpdatedAt,
+			&i.Draft,
 			&i.Handle,
 			&i.DisplayName,
 			&i.Avatar,
@@ -437,7 +492,7 @@ func (q *Queries) FavoriteSubject(ctx context.Context, uri string) (string, erro
 }
 
 const forks = `-- name: Forks :many
-SELECT uri, did, rkey, cid, title, artist, album, artist_slug, title_slug, kind, key, capo, tuning, difficulty, tags, fork_of_uri, fork_of_cid, created_at, updated_at, handle, display_name, avatar, rating_count, rating_avg, rating_score, favorite_count, fork_count FROM sheet_summaries WHERE fork_of_uri = $1 ORDER BY rating_score DESC, created_at
+SELECT uri, did, rkey, cid, title, artist, album, artist_slug, title_slug, kind, key, capo, tuning, difficulty, tags, fork_of_uri, fork_of_cid, created_at, updated_at, draft, handle, display_name, avatar, rating_count, rating_avg, rating_score, favorite_count, fork_count FROM sheet_summaries WHERE fork_of_uri = $1 ORDER BY rating_score DESC, created_at
 `
 
 func (q *Queries) Forks(ctx context.Context, forkOfUri string) ([]SheetSummary, error) {
@@ -469,6 +524,7 @@ func (q *Queries) Forks(ctx context.Context, forkOfUri string) ([]SheetSummary, 
 			&i.ForkOfCid,
 			&i.CreatedAt,
 			&i.UpdatedAt,
+			&i.Draft,
 			&i.Handle,
 			&i.DisplayName,
 			&i.Avatar,
@@ -542,49 +598,51 @@ func (q *Queries) GetOGCard(ctx context.Context, arg GetOGCardParams) ([]byte, e
 }
 
 const getSheet = `-- name: GetSheet :one
-SELECT ss.uri, ss.did, ss.rkey, ss.cid, ss.title, ss.artist, ss.album, ss.artist_slug, ss.title_slug, ss.kind, ss.key, ss.capo, ss.tuning, ss.difficulty, ss.tags, ss.fork_of_uri, ss.fork_of_cid, ss.created_at, ss.updated_at, ss.handle, ss.display_name, ss.avatar, ss.rating_count, ss.rating_avg, ss.rating_score, ss.favorite_count, ss.fork_count, s.content, s.description, s.voicings
-FROM sheet_summaries ss JOIN sheets s ON s.uri = ss.uri
+SELECT ss.uri, ss.did, ss.rkey, ss.cid, ss.title, ss.artist, ss.album, ss.artist_slug, ss.title_slug, ss.kind, ss.key, ss.capo, ss.tuning, ss.difficulty, ss.tags, ss.fork_of_uri, ss.fork_of_cid, ss.created_at, ss.updated_at, ss.draft, ss.handle, ss.display_name, ss.avatar, ss.rating_count, ss.rating_avg, ss.rating_score, ss.favorite_count, ss.fork_count, s.content, s.description, s.voicings
+FROM sheet_summaries_all ss JOIN sheets s ON s.uri = ss.uri
 WHERE ss.uri = $1
 `
 
 type GetSheetRow struct {
-	SheetSummary SheetSummary
-	Content      string
-	Description  string
-	Voicings     []byte
+	SheetSummariesAll SheetSummariesAll
+	Content           string
+	Description       string
+	Voicings          []byte
 }
 
+// Drafts included: the caller decides who may see one.
 func (q *Queries) GetSheet(ctx context.Context, uri string) (GetSheetRow, error) {
 	row := q.db.QueryRow(ctx, getSheet, uri)
 	var i GetSheetRow
 	err := row.Scan(
-		&i.SheetSummary.Uri,
-		&i.SheetSummary.Did,
-		&i.SheetSummary.Rkey,
-		&i.SheetSummary.Cid,
-		&i.SheetSummary.Title,
-		&i.SheetSummary.Artist,
-		&i.SheetSummary.Album,
-		&i.SheetSummary.ArtistSlug,
-		&i.SheetSummary.TitleSlug,
-		&i.SheetSummary.Kind,
-		&i.SheetSummary.Key,
-		&i.SheetSummary.Capo,
-		&i.SheetSummary.Tuning,
-		&i.SheetSummary.Difficulty,
-		&i.SheetSummary.Tags,
-		&i.SheetSummary.ForkOfUri,
-		&i.SheetSummary.ForkOfCid,
-		&i.SheetSummary.CreatedAt,
-		&i.SheetSummary.UpdatedAt,
-		&i.SheetSummary.Handle,
-		&i.SheetSummary.DisplayName,
-		&i.SheetSummary.Avatar,
-		&i.SheetSummary.RatingCount,
-		&i.SheetSummary.RatingAvg,
-		&i.SheetSummary.RatingScore,
-		&i.SheetSummary.FavoriteCount,
-		&i.SheetSummary.ForkCount,
+		&i.SheetSummariesAll.Uri,
+		&i.SheetSummariesAll.Did,
+		&i.SheetSummariesAll.Rkey,
+		&i.SheetSummariesAll.Cid,
+		&i.SheetSummariesAll.Title,
+		&i.SheetSummariesAll.Artist,
+		&i.SheetSummariesAll.Album,
+		&i.SheetSummariesAll.ArtistSlug,
+		&i.SheetSummariesAll.TitleSlug,
+		&i.SheetSummariesAll.Kind,
+		&i.SheetSummariesAll.Key,
+		&i.SheetSummariesAll.Capo,
+		&i.SheetSummariesAll.Tuning,
+		&i.SheetSummariesAll.Difficulty,
+		&i.SheetSummariesAll.Tags,
+		&i.SheetSummariesAll.ForkOfUri,
+		&i.SheetSummariesAll.ForkOfCid,
+		&i.SheetSummariesAll.CreatedAt,
+		&i.SheetSummariesAll.UpdatedAt,
+		&i.SheetSummariesAll.Draft,
+		&i.SheetSummariesAll.Handle,
+		&i.SheetSummariesAll.DisplayName,
+		&i.SheetSummariesAll.Avatar,
+		&i.SheetSummariesAll.RatingCount,
+		&i.SheetSummariesAll.RatingAvg,
+		&i.SheetSummariesAll.RatingScore,
+		&i.SheetSummariesAll.FavoriteCount,
+		&i.SheetSummariesAll.ForkCount,
 		&i.Content,
 		&i.Description,
 		&i.Voicings,
@@ -593,7 +651,7 @@ func (q *Queries) GetSheet(ctx context.Context, uri string) (GetSheetRow, error)
 }
 
 const getSheetSummary = `-- name: GetSheetSummary :one
-SELECT uri, did, rkey, cid, title, artist, album, artist_slug, title_slug, kind, key, capo, tuning, difficulty, tags, fork_of_uri, fork_of_cid, created_at, updated_at, handle, display_name, avatar, rating_count, rating_avg, rating_score, favorite_count, fork_count FROM sheet_summaries WHERE uri = $1
+SELECT uri, did, rkey, cid, title, artist, album, artist_slug, title_slug, kind, key, capo, tuning, difficulty, tags, fork_of_uri, fork_of_cid, created_at, updated_at, draft, handle, display_name, avatar, rating_count, rating_avg, rating_score, favorite_count, fork_count FROM sheet_summaries WHERE uri = $1
 `
 
 func (q *Queries) GetSheetSummary(ctx context.Context, uri string) (SheetSummary, error) {
@@ -619,6 +677,7 @@ func (q *Queries) GetSheetSummary(ctx context.Context, uri string) (SheetSummary
 		&i.ForkOfCid,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.Draft,
 		&i.Handle,
 		&i.DisplayName,
 		&i.Avatar,
@@ -664,7 +723,7 @@ func (q *Queries) GetWebSession(ctx context.Context, arg GetWebSessionParams) (G
 }
 
 const listSheetsRecent = `-- name: ListSheetsRecent :many
-SELECT uri, did, rkey, cid, title, artist, album, artist_slug, title_slug, kind, key, capo, tuning, difficulty, tags, fork_of_uri, fork_of_cid, created_at, updated_at, handle, display_name, avatar, rating_count, rating_avg, rating_score, favorite_count, fork_count FROM sheet_summaries ORDER BY created_at DESC LIMIT $1 OFFSET $2
+SELECT uri, did, rkey, cid, title, artist, album, artist_slug, title_slug, kind, key, capo, tuning, difficulty, tags, fork_of_uri, fork_of_cid, created_at, updated_at, draft, handle, display_name, avatar, rating_count, rating_avg, rating_score, favorite_count, fork_count FROM sheet_summaries ORDER BY created_at DESC LIMIT $1 OFFSET $2
 `
 
 type ListSheetsRecentParams struct {
@@ -701,6 +760,7 @@ func (q *Queries) ListSheetsRecent(ctx context.Context, arg ListSheetsRecentPara
 			&i.ForkOfCid,
 			&i.CreatedAt,
 			&i.UpdatedAt,
+			&i.Draft,
 			&i.Handle,
 			&i.DisplayName,
 			&i.Avatar,
@@ -721,7 +781,7 @@ func (q *Queries) ListSheetsRecent(ctx context.Context, arg ListSheetsRecentPara
 }
 
 const listSheetsTop = `-- name: ListSheetsTop :many
-SELECT uri, did, rkey, cid, title, artist, album, artist_slug, title_slug, kind, key, capo, tuning, difficulty, tags, fork_of_uri, fork_of_cid, created_at, updated_at, handle, display_name, avatar, rating_count, rating_avg, rating_score, favorite_count, fork_count FROM sheet_summaries
+SELECT uri, did, rkey, cid, title, artist, album, artist_slug, title_slug, kind, key, capo, tuning, difficulty, tags, fork_of_uri, fork_of_cid, created_at, updated_at, draft, handle, display_name, avatar, rating_count, rating_avg, rating_score, favorite_count, fork_count FROM sheet_summaries
 ORDER BY rating_score DESC, favorite_count DESC, created_at DESC
 LIMIT $1 OFFSET $2
 `
@@ -760,6 +820,7 @@ func (q *Queries) ListSheetsTop(ctx context.Context, arg ListSheetsTopParams) ([
 			&i.ForkOfCid,
 			&i.CreatedAt,
 			&i.UpdatedAt,
+			&i.Draft,
 			&i.Handle,
 			&i.DisplayName,
 			&i.Avatar,
@@ -827,7 +888,7 @@ FROM
      FROM (SELECT DISTINCT ON (did) value FROM ratings WHERE subject_uri = $1::text
            ORDER BY did, created_at DESC, uri DESC) newest) r,
     (SELECT COUNT(DISTINCT did)::int AS n FROM favorites WHERE subject_uri = $1::text) f,
-    (SELECT COUNT(*)::int AS n FROM sheets WHERE fork_of_uri = $1::text) k
+    (SELECT COUNT(*)::int AS n FROM sheets WHERE fork_of_uri = $1::text AND NOT draft) k
 ON CONFLICT (uri) DO UPDATE SET
     rating_count = excluded.rating_count, rating_avg = excluded.rating_avg,
     rating_score = excluded.rating_score, favorite_count = excluded.favorite_count,
@@ -890,13 +951,13 @@ hits AS (
             THEN ts_headline('simple', s.lyrics, q.query, $4::text)
             ELSE '' END AS snip
     FROM sheets s, q
-    WHERE s.search @@ q.query
+    WHERE NOT s.draft AND (s.search @@ q.query
         OR $2::text <% s.names
-        OR $3::text <% s.names_compact
+        OR $3::text <% s.names_compact)
     ORDER BY rank DESC
     LIMIT 500
 )
-SELECT ss.uri, ss.did, ss.rkey, ss.cid, ss.title, ss.artist, ss.album, ss.artist_slug, ss.title_slug, ss.kind, ss.key, ss.capo, ss.tuning, ss.difficulty, ss.tags, ss.fork_of_uri, ss.fork_of_cid, ss.created_at, ss.updated_at, ss.handle, ss.display_name, ss.avatar, ss.rating_count, ss.rating_avg, ss.rating_score, ss.favorite_count, ss.fork_count, h.snip::text AS snippet
+SELECT ss.uri, ss.did, ss.rkey, ss.cid, ss.title, ss.artist, ss.album, ss.artist_slug, ss.title_slug, ss.kind, ss.key, ss.capo, ss.tuning, ss.difficulty, ss.tags, ss.fork_of_uri, ss.fork_of_cid, ss.created_at, ss.updated_at, ss.draft, ss.handle, ss.display_name, ss.avatar, ss.rating_count, ss.rating_avg, ss.rating_score, ss.favorite_count, ss.fork_count, h.snip::text AS snippet
 FROM hits h JOIN sheet_summaries ss ON ss.uri = h.uri
 ORDER BY h.rank DESC
 `
@@ -952,6 +1013,7 @@ func (q *Queries) SearchSheets(ctx context.Context, arg SearchSheetsParams) ([]S
 			&i.SheetSummary.ForkOfCid,
 			&i.SheetSummary.CreatedAt,
 			&i.SheetSummary.UpdatedAt,
+			&i.SheetSummary.Draft,
 			&i.SheetSummary.Handle,
 			&i.SheetSummary.DisplayName,
 			&i.SheetSummary.Avatar,
@@ -1017,7 +1079,7 @@ func (q *Queries) SheetForkOf(ctx context.Context, uri string) (string, error) {
 }
 
 const sheetsByDID = `-- name: SheetsByDID :many
-SELECT uri, did, rkey, cid, title, artist, album, artist_slug, title_slug, kind, key, capo, tuning, difficulty, tags, fork_of_uri, fork_of_cid, created_at, updated_at, handle, display_name, avatar, rating_count, rating_avg, rating_score, favorite_count, fork_count FROM sheet_summaries WHERE did = $1 ORDER BY created_at DESC
+SELECT uri, did, rkey, cid, title, artist, album, artist_slug, title_slug, kind, key, capo, tuning, difficulty, tags, fork_of_uri, fork_of_cid, created_at, updated_at, draft, handle, display_name, avatar, rating_count, rating_avg, rating_score, favorite_count, fork_count FROM sheet_summaries WHERE did = $1 ORDER BY created_at DESC
 `
 
 func (q *Queries) SheetsByDID(ctx context.Context, did string) ([]SheetSummary, error) {
@@ -1049,6 +1111,7 @@ func (q *Queries) SheetsByDID(ctx context.Context, did string) ([]SheetSummary, 
 			&i.ForkOfCid,
 			&i.CreatedAt,
 			&i.UpdatedAt,
+			&i.Draft,
 			&i.Handle,
 			&i.DisplayName,
 			&i.Avatar,
@@ -1069,7 +1132,7 @@ func (q *Queries) SheetsByDID(ctx context.Context, did string) ([]SheetSummary, 
 }
 
 const sheetsByKind = `-- name: SheetsByKind :many
-SELECT s.kind, COUNT(*)::bigint AS n FROM sheets s GROUP BY s.kind
+SELECT s.kind, COUNT(*)::bigint AS n FROM sheets s WHERE NOT s.draft GROUP BY s.kind
 `
 
 type SheetsByKindRow struct {
@@ -1098,7 +1161,7 @@ func (q *Queries) SheetsByKind(ctx context.Context) ([]SheetsByKindRow, error) {
 }
 
 const songSheets = `-- name: SongSheets :many
-SELECT uri, did, rkey, cid, title, artist, album, artist_slug, title_slug, kind, key, capo, tuning, difficulty, tags, fork_of_uri, fork_of_cid, created_at, updated_at, handle, display_name, avatar, rating_count, rating_avg, rating_score, favorite_count, fork_count FROM sheet_summaries WHERE artist_slug = $1 AND title_slug = $2 ORDER BY created_at, uri
+SELECT uri, did, rkey, cid, title, artist, album, artist_slug, title_slug, kind, key, capo, tuning, difficulty, tags, fork_of_uri, fork_of_cid, created_at, updated_at, draft, handle, display_name, avatar, rating_count, rating_avg, rating_score, favorite_count, fork_count FROM sheet_summaries WHERE artist_slug = $1 AND title_slug = $2 ORDER BY created_at, uri
 `
 
 type SongSheetsParams struct {
@@ -1135,6 +1198,7 @@ func (q *Queries) SongSheets(ctx context.Context, arg SongSheetsParams) ([]Sheet
 			&i.ForkOfCid,
 			&i.CreatedAt,
 			&i.UpdatedAt,
+			&i.Draft,
 			&i.Handle,
 			&i.DisplayName,
 			&i.Avatar,
@@ -1266,17 +1330,17 @@ func (q *Queries) UpsertRating(ctx context.Context, arg UpsertRatingParams) erro
 const upsertSheet = `-- name: UpsertSheet :exec
 INSERT INTO sheets (uri, did, rkey, cid, title, artist, album, artist_slug, title_slug,
     kind, key, capo, tuning, difficulty, description, tags, tags_text, content, lyrics,
-    voicings, fork_of_uri, fork_of_cid, created_at, updated_at)
+    voicings, draft, fork_of_uri, fork_of_cid, created_at, updated_at)
 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9,
     $10, $11, $12, $13, $14, $15, $16, $17, $18, $19,
-    $20, $21, $22, $23, $24)
+    $20, $21, $22, $23, $24, $25)
 ON CONFLICT (uri) DO UPDATE SET
     cid = excluded.cid, title = excluded.title, artist = excluded.artist, album = excluded.album,
     artist_slug = excluded.artist_slug, title_slug = excluded.title_slug, kind = excluded.kind,
     key = excluded.key, capo = excluded.capo, tuning = excluded.tuning,
     difficulty = excluded.difficulty, description = excluded.description, tags = excluded.tags,
     tags_text = excluded.tags_text, content = excluded.content, lyrics = excluded.lyrics,
-    voicings = excluded.voicings,
+    voicings = excluded.voicings, draft = excluded.draft,
     fork_of_uri = excluded.fork_of_uri, fork_of_cid = excluded.fork_of_cid,
     created_at = excluded.created_at, updated_at = excluded.updated_at, indexed_at = now()
 `
@@ -1302,6 +1366,7 @@ type UpsertSheetParams struct {
 	Content     string
 	Lyrics      string
 	Voicings    []byte
+	Draft       bool
 	ForkOfUri   string
 	ForkOfCid   string
 	CreatedAt   time.Time
@@ -1330,6 +1395,7 @@ func (q *Queries) UpsertSheet(ctx context.Context, arg UpsertSheetParams) error 
 		arg.Content,
 		arg.Lyrics,
 		arg.Voicings,
+		arg.Draft,
 		arg.ForkOfUri,
 		arg.ForkOfCid,
 		arg.CreatedAt,
@@ -1341,9 +1407,10 @@ func (q *Queries) UpsertSheet(ctx context.Context, arg UpsertSheetParams) error 
 const usageStats = `-- name: UsageStats :one
 
 SELECT
-    (SELECT COUNT(*) FROM sheets s1)::bigint AS sheets,
-    (SELECT COUNT(DISTINCT s2.did) FROM sheets s2)::bigint AS authors,
-    (SELECT COUNT(*) FROM sheets s3 WHERE s3.created_at > now() - interval '24 hours')::bigint AS sheets_24h,
+    (SELECT COUNT(*) FROM sheets s1 WHERE NOT s1.draft)::bigint AS sheets,
+    (SELECT COUNT(*) FROM sheets d WHERE d.draft)::bigint AS drafts,
+    (SELECT COUNT(DISTINCT s2.did) FROM sheets s2 WHERE NOT s2.draft)::bigint AS authors,
+    (SELECT COUNT(*) FROM sheets s3 WHERE NOT s3.draft AND s3.created_at > now() - interval '24 hours')::bigint AS sheets_24h,
     (SELECT COUNT(*) FROM (SELECT DISTINCT r.did, r.subject_uri FROM ratings r) rr)::bigint AS ratings,
     (SELECT COUNT(*) FROM (SELECT DISTINCT f.did, f.subject_uri FROM favorites f) ff)::bigint AS favorites,
     (SELECT COUNT(*) FROM profiles p)::bigint AS accounts,
@@ -1354,6 +1421,7 @@ SELECT
 
 type UsageStatsRow struct {
 	Sheets           int64
+	Drafts           int64
 	Authors          int64
 	Sheets24h        int64
 	Ratings          int64
@@ -1370,6 +1438,7 @@ func (q *Queries) UsageStats(ctx context.Context, sessionCutoff time.Time) (Usag
 	var i UsageStatsRow
 	err := row.Scan(
 		&i.Sheets,
+		&i.Drafts,
 		&i.Authors,
 		&i.Sheets24h,
 		&i.Ratings,

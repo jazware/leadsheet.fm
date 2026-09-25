@@ -1,7 +1,8 @@
 import { createContext, useContext, useEffect, useId, useRef, useState } from 'react'
 import { clsx } from 'clsx'
 import { ChordDiagram } from '@/components/ChordDiagram'
-import { useVoicing } from '@/components/Voicings'
+import { ChordSoundContext, useVoicing } from '@/components/Voicings'
+import { strum } from '@/lib/pluck'
 import { mod12, simplifyQuality, type ChordSymbol } from '@/lib/music'
 import { STANDARD_STRINGS } from '@/lib/tunings'
 
@@ -24,6 +25,7 @@ export function ChordTip({
   shift,
   flats,
   simplify,
+  onPlay,
   className,
 }: {
   chord: ChordSymbol
@@ -31,6 +33,8 @@ export function ChordTip({
   shift: number
   flats: boolean
   simplify: boolean
+  /** Called on a click first; if it returns true, the chord isn't strummed. */
+  onPlay?: () => boolean
   className?: string
 }) {
   const ctx = useContext(ChordTipContext)
@@ -43,7 +47,13 @@ export function ChordTip({
     root: mod12(chord.root + shift),
     quality: simplify && chord.quality ? simplifyQuality(chord.quality) : chord.quality,
   }
-  const { step } = useVoicing(shown, ctx?.strings ?? STANDARD_STRINGS)
+  const { step, voicing } = useVoicing(shown, ctx?.strings ?? STANDARD_STRINGS)
+  const sound = useContext(ChordSoundContext)
+  // Clicking (or tapping) a chord name plays it.
+  const play = () => {
+    if (onPlay?.()) return
+    if (voicing && sound) strum(voicing.frets, sound.strings, sound.capo, sound.instrument)
+  }
 
   // A tap elsewhere closes a tapped-open tip.
   useEffect(() => {
@@ -73,7 +83,10 @@ export function ChordTip({
         onBlur={(e) => {
           if (!wrap.current?.contains(e.relatedTarget as Node)) setOpen(false)
         }}
-        onClick={() => (open ? setOpen(false) : show())}
+        onClick={() => {
+          play()
+          if (!open) show()
+        }}
         onKeyDown={(e) => {
           if (!open || (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight')) return
           e.preventDefault()

@@ -49,6 +49,16 @@ root, fifth and octave. Playing sounds like the instrument: a softer
 pluck for nylon ukulele strings, and a bass line (root, root-root, fifth,
 octave) instead of a strum.
 
+## Drafts
+
+A sheet record with `draft: true` is unpublished. It's in the author's
+repo like any record (so publicly readable there, which the UI says), but
+Leadsheet lists, searches, counts and previews only published sheets
+(`sheet_summaries` excludes drafts; `sheet_summaries_all` doesn't) and
+shows a draft only to its author: on their profile's Drafts tab and on
+the sheet itself, with a Publish button. Publishing sets `draft` to false
+and `createdAt` to the moment of publishing, so it lists as new.
+
 ## Chord shapes
 
 Hovering (or tapping) a chord shows its box; the arrows under it, or ←/→
@@ -75,7 +85,12 @@ another shape plays that one too, to compare them by ear.
 the whole chart through with the shapes the boxes show: a bar of "down,
 down-up, up-down-up" per chord at a set tempo, queued on the audio clock,
 lighting each chord up and scrolling along like play-along. The sheet
-doesn't say how long each chord lasts, so every chord gets a bar.
+doesn't say how long each chord lasts, so `ui/src/lib/timing.ts` reads it
+off the lyrics: a chord lasts until the next one (often across a line
+break), at about 1.5 sung syllables a beat plus a held beat and a half per
+line end, in half bars; chords on a line of their own get a bar each.
+Clicking a chord name plays it, or while the chart plays, carries on from
+there.
 
 ## Play along
 

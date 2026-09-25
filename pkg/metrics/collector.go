@@ -61,6 +61,7 @@ var (
 	descSheetsByKind = desc("leadsheet_sheets_by_kind", "Sheets in the index, by kind.", "kind")
 	descAuthors      = desc("leadsheet_authors", "Accounts with at least one sheet.")
 	descSheets24h    = desc("leadsheet_sheets_created_24h", "Sheets created in the last 24 hours.")
+	descDrafts       = desc("leadsheet_drafts", "Unpublished sheets (drafts) in the index.")
 	descRatings      = desc("leadsheet_ratings", "Rated sheets, counting each account's newest rating once.")
 	descFavorites    = desc("leadsheet_favorites", "Saved sheets, counting each account and sheet once.")
 	descAccounts     = desc("leadsheet_accounts", "Accounts known to the index (authors and people who've signed in).")
@@ -77,7 +78,7 @@ var (
 )
 
 func (c *Collector) Describe(ch chan<- *prometheus.Desc) {
-	for _, d := range []*prometheus.Desc{descSheets, descSheetsByKind, descAuthors, descSheets24h, descRatings,
+	for _, d := range []*prometheus.Desc{descSheets, descSheetsByKind, descAuthors, descSheets24h, descDrafts, descRatings,
 		descFavorites, descAccounts, descSignedIn, descOGCards, descDBSize, descUsageAge,
 		descPoolTotal, descPoolMax, descPoolAcquires, descPoolWaits, descPoolWaitTime} {
 		ch <- d
@@ -96,6 +97,7 @@ func (c *Collector) Collect(ch chan<- prometheus.Metric) {
 		gauge(descSheets, float64(u.Sheets))
 		gauge(descAuthors, float64(u.Authors))
 		gauge(descSheets24h, float64(u.Sheets24h))
+		gauge(descDrafts, float64(u.Drafts))
 		gauge(descRatings, float64(u.Ratings))
 		gauge(descFavorites, float64(u.Favorites))
 		gauge(descAccounts, float64(u.Accounts))

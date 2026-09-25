@@ -8,17 +8,17 @@ SELECT fork_of_uri FROM sheets WHERE uri = $1;
 -- name: UpsertSheet :exec
 INSERT INTO sheets (uri, did, rkey, cid, title, artist, album, artist_slug, title_slug,
     kind, key, capo, tuning, difficulty, description, tags, tags_text, content, lyrics,
-    voicings, fork_of_uri, fork_of_cid, created_at, updated_at)
+    voicings, draft, fork_of_uri, fork_of_cid, created_at, updated_at)
 VALUES (@uri, @did, @rkey, @cid, @title, @artist, @album, @artist_slug, @title_slug,
     @kind, @key, @capo, @tuning, @difficulty, @description, @tags, @tags_text, @content, @lyrics,
-    @voicings, @fork_of_uri, @fork_of_cid, @created_at, @updated_at)
+    @voicings, @draft, @fork_of_uri, @fork_of_cid, @created_at, @updated_at)
 ON CONFLICT (uri) DO UPDATE SET
     cid = excluded.cid, title = excluded.title, artist = excluded.artist, album = excluded.album,
     artist_slug = excluded.artist_slug, title_slug = excluded.title_slug, kind = excluded.kind,
     key = excluded.key, capo = excluded.capo, tuning = excluded.tuning,
     difficulty = excluded.difficulty, description = excluded.description, tags = excluded.tags,
     tags_text = excluded.tags_text, content = excluded.content, lyrics = excluded.lyrics,
-    voicings = excluded.voicings,
+    voicings = excluded.voicings, draft = excluded.draft,
     fork_of_uri = excluded.fork_of_uri, fork_of_cid = excluded.fork_of_cid,
     created_at = excluded.created_at, updated_at = excluded.updated_at, indexed_at = now();
 
@@ -26,8 +26,9 @@ ON CONFLICT (uri) DO UPDATE SET
 DELETE FROM sheets WHERE uri = $1 RETURNING fork_of_uri;
 
 -- name: GetSheet :one
+-- Drafts included: the caller decides who may see one.
 SELECT sqlc.embed(ss), s.content, s.description, s.voicings
-FROM sheet_summaries ss JOIN sheets s ON s.uri = ss.uri
+FROM sheet_summaries_all ss JOIN sheets s ON s.uri = ss.uri
 WHERE ss.uri = $1;
 
 -- name: GetSheetSummary :one
@@ -43,6 +44,9 @@ LIMIT $1 OFFSET $2;
 
 -- name: SheetsByDID :many
 SELECT * FROM sheet_summaries WHERE did = $1 ORDER BY created_at DESC;
+
+-- name: DraftsByDID :many
+SELECT * FROM sheet_summaries_all WHERE did = $1 AND draft ORDER BY updated_at DESC;
 
 -- name: Forks :many
 SELECT * FROM sheet_summaries WHERE fork_of_uri = $1 ORDER BY rating_score DESC, created_at;
@@ -70,9 +74,9 @@ hits AS (
             THEN ts_headline('simple', s.lyrics, q.query, sqlc.arg(headline_opts)::text)
             ELSE '' END AS snip
     FROM sheets s, q
-    WHERE s.search @@ q.query
+    WHERE NOT s.draft AND (s.search @@ q.query
         OR sqlc.arg(plain)::text <% s.names
-        OR sqlc.arg(compact)::text <% s.names_compact
+        OR sqlc.arg(compact)::text <% s.names_compact)
     ORDER BY rank DESC
     LIMIT 500
 )
@@ -98,7 +102,7 @@ FROM
      FROM (SELECT DISTINCT ON (did) value FROM ratings WHERE subject_uri = sqlc.arg(uri)::text
            ORDER BY did, created_at DESC, uri DESC) newest) r,
     (SELECT COUNT(DISTINCT did)::int AS n FROM favorites WHERE subject_uri = sqlc.arg(uri)::text) f,
-    (SELECT COUNT(*)::int AS n FROM sheets WHERE fork_of_uri = sqlc.arg(uri)::text) k
+    (SELECT COUNT(*)::int AS n FROM sheets WHERE fork_of_uri = sqlc.arg(uri)::text AND NOT draft) k
 ON CONFLICT (uri) DO UPDATE SET
     rating_count = excluded.rating_count, rating_avg = excluded.rating_avg,
     rating_score = excluded.rating_score, favorite_count = excluded.favorite_count,
@@ -272,9 +276,10 @@ WHERE st.rating_count = 0 AND st.favorite_count = 0 AND st.fork_count = 0
 
 -- name: UsageStats :one
 SELECT
-    (SELECT COUNT(*) FROM sheets s1)::bigint AS sheets,
-    (SELECT COUNT(DISTINCT s2.did) FROM sheets s2)::bigint AS authors,
-    (SELECT COUNT(*) FROM sheets s3 WHERE s3.created_at > now() - interval '24 hours')::bigint AS sheets_24h,
+    (SELECT COUNT(*) FROM sheets s1 WHERE NOT s1.draft)::bigint AS sheets,
+    (SELECT COUNT(*) FROM sheets d WHERE d.draft)::bigint AS drafts,
+    (SELECT COUNT(DISTINCT s2.did) FROM sheets s2 WHERE NOT s2.draft)::bigint AS authors,
+    (SELECT COUNT(*) FROM sheets s3 WHERE NOT s3.draft AND s3.created_at > now() - interval '24 hours')::bigint AS sheets_24h,
     (SELECT COUNT(*) FROM (SELECT DISTINCT r.did, r.subject_uri FROM ratings r) rr)::bigint AS ratings,
     (SELECT COUNT(*) FROM (SELECT DISTINCT f.did, f.subject_uri FROM favorites f) ff)::bigint AS favorites,
     (SELECT COUNT(*) FROM profiles p)::bigint AS accounts,
@@ -283,4 +288,4 @@ SELECT
     pg_database_size(current_database())::bigint AS db_size_bytes;
 
 -- name: SheetsByKind :many
-SELECT s.kind, COUNT(*)::bigint AS n FROM sheets s GROUP BY s.kind;
+SELECT s.kind, COUNT(*)::bigint AS n FROM sheets s WHERE NOT s.draft GROUP BY s.kind;

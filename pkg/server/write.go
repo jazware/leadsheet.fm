@@ -31,6 +31,7 @@ type sheetInput struct {
 	Description string             `json:"description"`
 	Tags        []string           `json:"tags"`
 	Voicings    []records.Voicing  `json:"voicings"`
+	Draft       bool               `json:"draft"`
 	ForkOf      *records.StrongRef `json:"forkOf"`
 }
 
@@ -48,6 +49,7 @@ func (in *sheetInput) record(createdAt string) *records.Sheet {
 		Difficulty:  in.Difficulty,
 		Description: strings.TrimSpace(in.Description),
 		ForkOf:      in.ForkOf,
+		Draft:       in.Draft,
 		CreatedAt:   createdAt,
 	}
 	if in.Capo > 0 {
@@ -179,7 +181,7 @@ func (s *Server) ownSheet(c echo.Context) (*store.Sheet, error) {
 	if did != viewer(c).DID.String() {
 		return nil, echo.NewHTTPError(http.StatusForbidden, "that's someone else's sheet")
 	}
-	sheet, err := s.store.GetSheet(c.Request().Context(), uri)
+	sheet, err := s.store.GetSheet(c.Request().Context(), uri, did)
 	if err != nil {
 		return nil, notFoundOr(err, "sheet")
 	}
@@ -199,6 +201,10 @@ func (s *Server) handleUpdateSheet(c echo.Context) error {
 	rec := in.record(existing.CreatedAt.UTC().Format(atprotoDatetime))
 	rec.ForkOf = existing.ForkOf // where a sheet came from doesn't change
 	rec.UpdatedAt = syntax.DatetimeNow().String()
+	if existing.Draft && !rec.Draft {
+		// Publishing: it's new to everyone now, so it lists as new.
+		rec.CreatedAt = rec.UpdatedAt
+	}
 	if err := validateSheet(rec); err != nil {
 		return err
 	}

@@ -99,7 +99,7 @@ func (s *Server) pageMeta(c echo.Context, path string) pageMeta {
 		if err != nil {
 			return m
 		}
-		sh, err := s.store.GetSheet(ctx, store.SheetURI(did, parts[2]))
+		sh, err := s.store.GetSheet(ctx, store.SheetURI(did, parts[2]), "") // no previews of drafts
 		if err != nil {
 			return m
 		}
@@ -217,7 +217,7 @@ func (s *Server) handleOGSheet(c echo.Context) error {
 		return err
 	}
 	rkey := strings.TrimSuffix(param(c, "file"), ".png")
-	sh, err := s.store.GetSheet(ctx, store.SheetURI(did, rkey))
+	sh, err := s.store.GetSheet(ctx, store.SheetURI(did, rkey), "")
 	if err != nil {
 		return notFoundOr(err, "sheet")
 	}

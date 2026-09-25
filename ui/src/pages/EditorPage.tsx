@@ -3,7 +3,7 @@ import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { clsx } from 'clsx'
 import { ChevronDown, Trash2 } from 'lucide-react'
-import { api, profilePath, sheetPath, type Sheet, type SheetInput } from '@/lib/api'
+import { api, profilePath, sheetInput, sheetPath, type Sheet, type SheetInput } from '@/lib/api'
 import { chordsIn, parseChordPro, type Doc } from '@/lib/chordpro'
 import { chordsOverLyricsToChordPro, looksLikeChordsOverLyrics } from '@/lib/convert'
 import { importDraftKey, importToSheet, looksLikeUGMarkup, readImport, ugToChordPro, type UGImport } from '@/lib/ultimateGuitar'
@@ -51,22 +51,7 @@ const KINDS = [
   ['bass', 'Bass'],
 ] as const
 
-function fromSheet(s: Sheet): SheetInput {
-  return {
-    title: s.title,
-    artist: s.artist,
-    album: s.album,
-    kind: s.kind,
-    content: s.content,
-    key: s.key,
-    capo: s.capo,
-    tuning: s.tuning || 'standard',
-    difficulty: s.difficulty,
-    description: s.description,
-    tags: s.tags,
-    voicings: s.voicings ?? [],
-  }
-}
+const fromSheet = sheetInput
 
 /** New sheet (/new, /new?fork=did/rkey) or edit (/sheet/:actor/:rkey/edit). */
 export function EditorPage() {
@@ -184,15 +169,19 @@ function Editor({
   const mine = mode !== 'edit' || viewer?.did === source?.did
   const ready = form.title.trim() && form.artist.trim() && form.content.trim()
 
-  const publish = async () => {
+  // A sheet that's still a draft (or not saved at all) can be saved as a
+  // draft; publishing makes it public.
+  const canDraft = mode !== 'edit' || !!source?.draft
+  const publish = async (draft = false) => {
     if (!viewer) {
-      openLogin('Sign in to publish. Your draft is kept while you do.')
+      openLogin(draft ? 'Sign in to save a draft to your account. It stays in this browser while you do.' : 'Sign in to publish. Your draft is kept while you do.')
       return
     }
     setBusy(true)
     setError(null)
     const input: SheetInput = {
       ...form,
+      draft,
       tags: tagText.split(',').map((t) => t.trim()).filter(Boolean),
       voicings: liveVoicings(form.voicings, doc),
       forkOf: mode === 'fork' ? { uri: source!.uri, cid: source!.cid } : undefined,
@@ -481,14 +470,29 @@ function Editor({
       )}
 
       <div className="sticky bottom-0 -mx-5 flex flex-wrap items-center gap-3 border-t border-rule bg-bg px-5 py-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] sm:-mx-8 sm:px-8">
-        <button type="button" className="btn btn-accent" disabled={busy || !ready} onClick={publish}>
-          {busy ? 'Publishing…' : mode === 'edit' ? 'Publish changes' : 'Publish'}
+        <button type="button" className="btn btn-accent" disabled={busy || !ready} onClick={() => publish(false)}>
+          {busy ? 'Saving…' : mode === 'edit' && !source?.draft ? 'Publish changes' : 'Publish'}
         </button>
+        {canDraft && (
+          <button
+            type="button"
+            className="btn"
+            disabled={busy || !ready}
+            onClick={() => publish(true)}
+            title="Saved to your account but not listed on Leadsheet. Like everything in an atproto account, it's still publicly readable."
+          >
+            {mode === 'edit' ? 'Save draft' : 'Save as draft'}
+          </button>
+        )}
         <button type="button" className="btn" onClick={discard}>
           {mode === 'edit' ? 'Discard changes' : 'Clear draft'}
         </button>
         <span className="text-sm font-semibold text-ink-soft">
-          {viewer ? `Saved as a record in ${handleText(viewer)}'s atproto account.` : 'Drafts stay in this browser until you publish.'}
+          {viewer
+            ? canDraft
+              ? `Saved as a record in ${handleText(viewer)}'s atproto account. Drafts aren't listed on Leadsheet, but like any record anyone can read them.`
+              : `Saved as a record in ${handleText(viewer)}'s atproto account.`
+            : 'Unsaved changes stay in this browser until you sign in and save.'}
         </span>
         {error && <p className="basis-full text-sm font-bold text-chord">{error}</p>}
       </div>

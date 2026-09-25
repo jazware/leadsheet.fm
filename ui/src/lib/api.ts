@@ -38,6 +38,8 @@ export interface SheetSummary {
   forkOf?: StrongRef
   createdAt: string
   updatedAt: string
+  /** Unpublished: only its author sees it. */
+  draft: boolean
   author: Author
   stats: Stats
 }
@@ -105,6 +107,8 @@ export interface Profile {
   author: Author
   sheets: SheetSummary[]
   favorites: SheetSummary[]
+  /** Only on your own profile. */
+  drafts?: SheetSummary[]
 }
 
 export interface SheetInput {
@@ -120,7 +124,28 @@ export interface SheetInput {
   description: string
   tags: string[]
   voicings: SheetVoicing[]
+  /** Save without publishing. */
+  draft?: boolean
   forkOf?: { uri: string; cid: string }
+}
+
+/** A sheet's fields as the editor (and publishing a draft) sends them. */
+export function sheetInput(s: Sheet): SheetInput {
+  return {
+    title: s.title,
+    artist: s.artist,
+    album: s.album,
+    kind: s.kind,
+    content: s.content,
+    key: s.key,
+    capo: s.capo,
+    tuning: s.tuning || 'standard',
+    difficulty: s.difficulty,
+    description: s.description,
+    tags: s.tags,
+    voicings: s.voicings ?? [],
+    draft: s.draft,
+  }
 }
 
 export class ApiError extends Error {

@@ -49,6 +49,8 @@ type SheetSummary struct {
 	ForkOf      *records.StrongRef `json:"forkOf,omitempty"`
 	CreatedAt   time.Time          `json:"createdAt"`
 	UpdatedAt   time.Time          `json:"updatedAt"`
+	// Unpublished: only its author sees it (see GetSheet, Drafts).
+	Draft       bool               `json:"draft"`
 	Author      Author             `json:"author"`
 	Stats       Stats              `json:"stats"`
 	ratingScore float64
@@ -73,7 +75,7 @@ func summary(r dbq.SheetSummary) SheetSummary {
 		ArtistSlug: r.ArtistSlug, TitleSlug: r.TitleSlug,
 		Kind: r.Kind, Key: r.Key, Capo: int(r.Capo), Tuning: r.Tuning, Difficulty: r.Difficulty,
 		Tags:      r.Tags,
-		CreatedAt: r.CreatedAt, UpdatedAt: r.UpdatedAt,
+		CreatedAt: r.CreatedAt, UpdatedAt: r.UpdatedAt, Draft: r.Draft,
 		Author: Author{DID: r.Did, Handle: r.Handle, DisplayName: r.DisplayName, Avatar: r.Avatar},
 		Stats: Stats{
 			RatingCount: int(r.RatingCount), RatingAvg: r.RatingAvg,
@@ -141,6 +143,7 @@ func (s *Store) UpsertSheet(ctx context.Context, did, rkey, cid string, rec *rec
 		return err
 	}
 	p.TagsText = strings.Join(p.Tags, " ")
+	p.Draft = rec.Draft
 	if p.Kind == "" {
 		p.Kind = "chords"
 	}
@@ -188,13 +191,32 @@ func (s *Store) DeleteSheet(ctx context.Context, uri string) error {
 	})
 }
 
-// GetSheet returns a full sheet, or ErrNotFound (also for hidden authors).
-func (s *Store) GetSheet(ctx context.Context, uri string) (*Sheet, error) {
+// GetSheet returns a full sheet, or ErrNotFound (also for hidden authors,
+// and for a draft unless `viewer` is its author; "" for nobody).
+func (s *Store) GetSheet(ctx context.Context, uri, viewer string) (*Sheet, error) {
 	r, err := s.q.GetSheet(ctx, uri)
 	if err != nil {
 		return nil, noRows(err)
 	}
-	return &Sheet{SheetSummary: summary(r.SheetSummary), Content: r.Content, Description: r.Description, Voicings: r.Voicings}, nil
+	sum := summary(dbq.SheetSummary(r.SheetSummariesAll))
+	if sum.Draft && sum.DID != viewer {
+		return nil, ErrNotFound
+	}
+	return &Sheet{SheetSummary: sum, Content: r.Content, Description: r.Description, Voicings: r.Voicings}, nil
+}
+
+// Drafts lists an account's unpublished sheets, latest edit first. Only
+// for showing to that account.
+func (s *Store) Drafts(ctx context.Context, did string) ([]SheetSummary, error) {
+	rows, err := s.q.DraftsByDID(ctx, did)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]SheetSummary, len(rows))
+	for i, r := range rows {
+		out[i] = summary(dbq.SheetSummary(r))
+	}
+	return out, nil
 }
 
 // GetSheetSummary is GetSheet without the content.

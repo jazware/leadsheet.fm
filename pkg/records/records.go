@@ -42,6 +42,7 @@ type Sheet struct {
 	Description string     `json:"description,omitempty"`
 	Tags        []string   `json:"tags,omitempty"`
 	Voicings    []Voicing  `json:"voicings,omitempty"`
+	Draft       bool       `json:"draft,omitempty"`
 	ForkOf      *StrongRef `json:"forkOf,omitempty"`
 	CreatedAt   string     `json:"createdAt"`
 	UpdatedAt   string     `json:"updatedAt,omitempty"`

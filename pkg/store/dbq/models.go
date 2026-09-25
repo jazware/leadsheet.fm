@@ -90,10 +90,42 @@ type Sheet struct {
 	NamesCompact pgtype.Text
 	Search       interface{}
 	Voicings     []byte
+	Draft        bool
 }
 
 type SheetStat struct {
 	Uri           string
+	RatingCount   int32
+	RatingAvg     float64
+	RatingScore   float64
+	FavoriteCount int32
+	ForkCount     int32
+}
+
+type SheetSummariesAll struct {
+	Uri           string
+	Did           string
+	Rkey          string
+	Cid           string
+	Title         string
+	Artist        string
+	Album         string
+	ArtistSlug    string
+	TitleSlug     string
+	Kind          string
+	Key           string
+	Capo          int32
+	Tuning        string
+	Difficulty    string
+	Tags          []string
+	ForkOfUri     string
+	ForkOfCid     string
+	CreatedAt     time.Time
+	UpdatedAt     time.Time
+	Draft         bool
+	Handle        string
+	DisplayName   string
+	Avatar        string
 	RatingCount   int32
 	RatingAvg     float64
 	RatingScore   float64
@@ -121,6 +153,7 @@ type SheetSummary struct {
 	ForkOfCid     string
 	CreatedAt     time.Time
 	UpdatedAt     time.Time
+	Draft         bool
 	Handle        string
 	DisplayName   string
 	Avatar        string

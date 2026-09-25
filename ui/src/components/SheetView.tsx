@@ -34,23 +34,36 @@ export function SheetView({
   doc,
   options,
   now,
+  onChordClick,
   className,
 }: {
   doc: Doc
   options: ViewOptions
   now?: Segment | null
+  /** A chord name was clicked; return true if that was handled (it isn't strummed then). */
+  onChordClick?: (s: Segment) => boolean
   className?: string
 }) {
   return (
     <div className={clsx('font-semibold', className)} style={{ fontSize: options.fontSize }}>
       {doc.blocks.map((b, i) => (
-        <BlockView key={i} block={b} options={options} now={now} />
+        <BlockView key={i} block={b} options={options} now={now} onChordClick={onChordClick} />
       ))}
     </div>
   )
 }
 
-function BlockView({ block, options, now }: { block: Block; options: ViewOptions; now?: Segment | null }) {
+function BlockView({
+  block,
+  options,
+  now,
+  onChordClick,
+}: {
+  block: Block
+  options: ViewOptions
+  now?: Segment | null
+  onChordClick?: (s: Segment) => boolean
+}) {
   const label = block.label ?? BLOCK_LABEL[block.kind]
   const panel = block.kind === 'chorus'
   return (
@@ -65,7 +78,7 @@ function BlockView({ block, options, now }: { block: Block; options: ViewOptions
       ) : (
         <div className="leading-tight">
           {block.lines.map((l, i) => (
-            <LineView key={i} line={l} options={options} now={now} />
+            <LineView key={i} line={l} options={options} now={now} onChordClick={onChordClick} />
           ))}
         </div>
       )}
@@ -75,7 +88,17 @@ function BlockView({ block, options, now }: { block: Block; options: ViewOptions
 
 const chordCls = 'whitespace-nowrap text-[0.9em] font-black leading-none text-chord'
 
-function LineView({ line, options, now }: { line: Line; options: ViewOptions; now?: Segment | null }) {
+function LineView({
+  line,
+  options,
+  now,
+  onChordClick,
+}: {
+  line: Line
+  options: ViewOptions
+  now?: Segment | null
+  onChordClick?: (s: Segment) => boolean
+}) {
   if (line.type === 'blank') return <div className="h-[0.9em]" />
   if (line.type === 'comment') {
     return <p className="my-1.5 text-[0.8em] font-bold italic text-ink-soft">{line.text}</p>
@@ -87,7 +110,14 @@ function LineView({ line, options, now }: { line: Line; options: ViewOptions; no
   // Parsed chords show their shape on hover; anything else ("N.C.", "x2") is plain text.
   const tip = (s: (typeof line.segments)[number]) =>
     s.chord ? (
-      <ChordTip chord={s.chord} label={label(s)!} shift={options.shift} flats={options.flats} simplify={options.simplify} />
+      <ChordTip
+        chord={s.chord}
+        label={label(s)!}
+        shift={options.shift}
+        flats={options.flats}
+        simplify={options.simplify}
+        onPlay={onChordClick && (() => onChordClick(s))}
+      />
     ) : (
       label(s)
     )

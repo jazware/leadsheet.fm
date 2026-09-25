@@ -205,13 +205,14 @@ const BASS_LINE: [number, number, number][] = [
 export const BEATS_PER_CHORD = 4
 
 /**
- * Plays a chart: each chord a bar of the strum pattern at `bpm`, starting
- * from chord `from`. Strums are queued on the audio clock a little ahead,
- * so timing holds when the page is busy. `onChord` fires as each chord
- * starts sounding and `onEnd` after the last; the returned function stops.
+ * Plays a chart: each chord for its `beats` (the strum pattern repeating
+ * through them) at `bpm`, starting from chord `from`. Strums are queued on
+ * the audio clock a little ahead, so timing holds when the page is busy.
+ * `onChord` fires as each chord starts sounding and `onEnd` after the
+ * last; the returned function stops.
  */
 export function playThrough(
-  chords: (Frets | null)[],
+  chords: { frets: Frets | null; beats: number }[],
   openStrings: number[],
   capo: number,
   bpm: number,
@@ -223,19 +224,28 @@ export function playThrough(
   const { ctx } = audio()
   void ctx.resume()
   const beat = 60 / bpm
-  const bar = BEATS_PER_CHORD * beat
   const start = ctx.currentTime + 0.1
+  // When each chord starts: the beats of the chords before it.
+  const starts = [start]
+  for (let i = from; i < chords.length; i++) starts.push(starts[starts.length - 1] + chords[i].beats * beat)
+  const at = (i: number) => starts[i - from]
   const timers: ReturnType<typeof setTimeout>[] = []
   let next = from
-  const at = (i: number) => start + (i - from) * bar
   const tick = () => {
     while (next < chords.length && at(next) < ctx.currentTime + 0.5) {
       const i = next++
-      const frets = chords[i]
-      if (frets && instrument === 'bass') {
-        for (const [b, n, level] of BASS_LINE) strumAt(frets, openStrings, capo, instrument, at(i) + b * beat, false, level, n)
-      } else if (frets) {
-        for (const [b, up, level] of STRUM) strumAt(frets, openStrings, capo, instrument, at(i) + b * beat, up, level)
+      const { frets, beats } = chords[i]
+      // The bar's pattern, repeated or cut short to fit the chord.
+      for (let bar = 0; frets && bar < beats; bar += BEATS_PER_CHORD) {
+        if (instrument === 'bass') {
+          for (const [b, n, level] of BASS_LINE) {
+            if (bar + b < beats) strumAt(frets, openStrings, capo, instrument, at(i) + (bar + b) * beat, false, level, n)
+          }
+        } else {
+          for (const [b, up, level] of STRUM) {
+            if (bar + b < beats) strumAt(frets, openStrings, capo, instrument, at(i) + (bar + b) * beat, up, bar + b === 0 ? 1 : level)
+          }
+        }
       }
       timers.push(setTimeout(() => onChord(i), Math.max(0, (at(i) - ctx.currentTime) * 1000)))
     }

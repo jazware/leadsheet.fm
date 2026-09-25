@@ -1,8 +1,9 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import { clsx } from 'clsx'
+import { useQueryClient } from '@tanstack/react-query'
 import { ArrowLeft, Bookmark, GitFork, Maximize2, Mic, MicOff, Minus, Pause, Pencil, Play, Plus, Printer, Square, Type, Volume2, X } from 'lucide-react'
-import { KIND_LABEL, sheetPath, type SheetPage as SheetPageData } from '@/lib/api'
+import { api, KIND_LABEL, sheetInput, sheetPath, type SheetPage as SheetPageData } from '@/lib/api'
 import { chordsIn, parseChordPro, type Segment } from '@/lib/chordpro'
 import { keyText, keyUsesFlats, mod12, noteName, parseKey, pretty, simplifyQuality, type Quality } from '@/lib/music'
 import { getTuning, instrumentOf, isStandardShapes, shapeStrings } from '@/lib/tunings'
@@ -22,6 +23,7 @@ import { usePlayAlong, type PlayAlongState } from '@/listen/usePlayAlong'
 import { btcChord } from '@/listen/btc'
 import { ChordSoundContext, resolveVoicing, SheetShapesProvider, sheetShapes, usePicks } from '@/components/Voicings'
 import { playThrough } from '@/lib/pluck'
+import { chordBeats } from '@/lib/timing'
 import { playAlongChords } from '@/listen/sheet'
 
 export function SheetPage() {
@@ -96,13 +98,14 @@ function useSheetControls(page: SheetPageData) {
   const [hearing, setHearing] = useState<number | null>(null)
   const stopHearing = useRef<(() => void) | null>(null)
   const sequence = useMemo(() => playAlongChords(doc).segments, [doc])
+  const beats = useMemo(() => chordBeats(doc), [doc])
   const hear = (from = 0, tempo = bpm) => {
     stopHearing.current?.()
     const strings = shapeStrings(tuning)
-    const frets = sequence.map((seg) => {
+    const frets = sequence.map((seg, i) => {
       const c = seg.chord!
       const shown = { ...c, root: mod12(c.root + shift), quality: simplify && c.quality ? simplifyQuality(c.quality) : c.quality }
-      return resolveVoicing(shown, strings, shapes, picks)?.frets ?? null
+      return { frets: resolveVoicing(shown, strings, shapes, picks)?.frets ?? null, beats: beats[i] ?? 4 }
     })
     stopHearing.current = playThrough(frets, sound.strings, sound.capo, tempo, setHearing, () => {
       stopHearing.current = null
@@ -127,6 +130,14 @@ function useSheetControls(page: SheetPageData) {
     soundingKey, shapeKey,
     play, now, shapes, sound, capoable,
     hearing: hearing !== null, bpm,
+    // Clicking a chord while the chart plays carries on from there.
+    // Returns whether it did (otherwise the chord just strums).
+    playFrom: (seg: Segment) => {
+      const i = sequence.indexOf(seg)
+      if (hearing === null || i < 0) return false
+      hear(i)
+      return true
+    },
     toggleHearing: () => {
       if (hearing !== null) return silence()
       play.stop()
@@ -197,14 +208,15 @@ function SheetScreen({ page, actor }: { page: SheetPageData; actor: string }) {
         <article className="grid gap-x-12 gap-y-5 lg:grid-cols-[minmax(0,1fr)_17rem] lg:pt-2">
           <div className="flex min-w-0 flex-col gap-5">
             <TopBar page={page} actor={actor} />
-            <TitleBlock page={page} actor={actor} />
+            {sheet.draft && <DraftBanner page={page} />}
+          <TitleBlock page={page} actor={actor} />
             {sheet.description && (
               <p className="card whitespace-pre-line px-4 py-3 font-semibold text-ink-soft">{sheet.description}</p>
             )}
             <div className="no-print lg:hidden">{diagrams}</div>
             <div ref={sheetRef}>
               <ChordTipContext.Provider value={{ strings: shapeStrings(tuning) }}>
-                <SheetView doc={c.doc} options={c.options} now={c.now} className="max-w-[40rem] pt-1" />
+                <SheetView doc={c.doc} options={c.options} now={c.now} onChordClick={c.playFrom} className="max-w-[40rem] pt-1" />
               </ChordTipContext.Provider>
             </div>
             <Related page={page} />
@@ -261,30 +273,34 @@ function SheetActions({ page, actor, compact }: { page: SheetPageData; actor: st
 
   return (
     <div className="flex flex-wrap items-center justify-end gap-2">
-      <button
-        type="button"
-        className={clsx('btn', compact && 'px-0', saved && 'btn-on')}
-        aria-pressed={saved}
-        aria-label={compact ? 'Save' : undefined}
-        disabled={favorite.isPending}
-        onClick={() =>
-          viewer
-            ? favorite.mutate(!saved, { onError: (e) => setError(e.message) })
-            : openLogin('Sign in to save songs to your list.')
-        }
-      >
-        <Bookmark className={clsx(icon, saved && 'fill-current')} aria-hidden />
-        {text(saved ? 'Saved' : 'Save')}
-      </button>
-      <Link
-        to={`/new?fork=${encodeURIComponent(`${sheet.did}/${sheet.rkey}`)}`}
-        className={clsx('btn', compact && 'px-0')}
-        aria-label={compact ? 'Fork' : undefined}
-        title="Start your own version from this one"
-      >
-        <GitFork className={icon} aria-hidden />
-        {text('Fork')}
-      </Link>
+      {!sheet.draft && (
+        <button
+          type="button"
+          className={clsx('btn', compact && 'px-0', saved && 'btn-on')}
+          aria-pressed={saved}
+          aria-label={compact ? 'Save' : undefined}
+          disabled={favorite.isPending}
+          onClick={() =>
+            viewer
+              ? favorite.mutate(!saved, { onError: (e) => setError(e.message) })
+              : openLogin('Sign in to save songs to your list.')
+          }
+        >
+          <Bookmark className={clsx(icon, saved && 'fill-current')} aria-hidden />
+          {text(saved ? 'Saved' : 'Save')}
+        </button>
+      )}
+      {!sheet.draft && (
+        <Link
+          to={`/new?fork=${encodeURIComponent(`${sheet.did}/${sheet.rkey}`)}`}
+          className={clsx('btn', compact && 'px-0')}
+          aria-label={compact ? 'Fork' : undefined}
+          title="Start your own version from this one"
+        >
+          <GitFork className={icon} aria-hidden />
+          {text('Fork')}
+        </Link>
+      )}
       {mine && (
         <Link to={`${sheetPath(sheet)}/edit`} className={clsx('btn', compact && 'px-0')} aria-label={compact ? 'Edit' : undefined}>
           <Pencil className={icon} aria-hidden />
@@ -298,6 +314,41 @@ function SheetActions({ page, actor, compact }: { page: SheetPageData; actor: st
         </button>
       )}
       {error && <p className="basis-full text-right text-sm font-bold text-chord">{error}</p>}
+    </div>
+  )
+}
+
+/** On your own draft: what a draft is, and a way to publish it. */
+function DraftBanner({ page }: { page: SheetPageData }) {
+  const { sheet } = page
+  const qc = useQueryClient()
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const publish = async () => {
+    setBusy(true)
+    setError(null)
+    try {
+      await api.updateSheet(sheet.did, sheet.rkey, { ...sheetInput(sheet), draft: false })
+      await qc.invalidateQueries()
+    } catch (e) {
+      setError((e as Error).message)
+    }
+    setBusy(false)
+  }
+  return (
+    <div className="no-print flex flex-wrap items-center justify-between gap-3 rounded-2xl bg-glow px-4 py-3 font-bold text-glow-ink">
+      <p className="min-w-0 flex-1 basis-64">
+        Draft. Only you see it on Leadsheet, though like everything in your atproto account it's publicly readable.
+        {error && <span className="block text-sm">Couldn't publish: {error}</span>}
+      </p>
+      <button
+        type="button"
+        className="h-10 rounded-full bg-glow-ink px-5 font-extrabold text-glow disabled:opacity-60"
+        disabled={busy}
+        onClick={publish}
+      >
+        {busy ? 'Publishing…' : 'Publish'}
+      </button>
     </div>
   )
 }
@@ -361,7 +412,7 @@ function TitleBlock({ page, actor }: { page: SheetPageData; actor: string }) {
         </p>
       </div>
       <div className="no-print flex flex-wrap items-center justify-between gap-3">
-        <div className="flex items-center gap-2">
+        <div className={clsx('flex items-center gap-2', sheet.draft && 'invisible')}>
           <StarsInput
             value={state?.rating ?? 0}
             disabled={rate.isPending}
@@ -789,7 +840,7 @@ function Stage({ page, c }: { page: SheetPageData; c: Controls }) {
       <div ref={ref} className="stage flex-1 overflow-y-auto">
         <div className="mx-auto max-w-3xl px-8 pb-[70vh] pt-[18vh]">
           <ChordTipContext.Provider value={stageTips}>
-            <SheetView doc={c.doc} options={{ ...c.options, fontSize: c.options.fontSize + 7 }} now={c.now} className="font-bold" />
+            <SheetView doc={c.doc} options={{ ...c.options, fontSize: c.options.fontSize + 7 }} now={c.now} onChordClick={c.playFrom} className="font-bold" />
           </ChordTipContext.Provider>
         </div>
       </div>

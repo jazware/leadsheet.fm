@@ -31,7 +31,7 @@ func TestFirehoseEvents(t *testing.T) {
 		"content": "[Em]Are you going", "createdAt": "2026-09-24T00:00:00Z", "capo": float64(3),
 	}
 	commit("did:plc:a", "create", "3k1", sheet)
-	got, err := st.GetSheet(ctx, store.SheetURI("did:plc:a", "3k1"))
+	got, err := st.GetSheet(ctx, store.SheetURI("did:plc:a", "3k1"), "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -41,7 +41,7 @@ func TestFirehoseEvents(t *testing.T) {
 
 	// Records that don't match the lexicon are ignored, not errors.
 	commit("did:plc:a", "create", "3k2", map[string]any{"$type": "fm.leadsheet.sheet", "title": "no artist"})
-	if _, err := st.GetSheet(ctx, store.SheetURI("did:plc:a", "3k2")); !errors.Is(err, store.ErrNotFound) {
+	if _, err := st.GetSheet(ctx, store.SheetURI("did:plc:a", "3k2"), ""); !errors.Is(err, store.ErrNotFound) {
 		t.Fatalf("invalid record indexed: %v", err)
 	}
 
@@ -53,15 +53,15 @@ func TestFirehoseEvents(t *testing.T) {
 		}
 	}
 	account(false, "deactivated")
-	if _, err := st.GetSheet(ctx, store.SheetURI("did:plc:a", "3k1")); !errors.Is(err, store.ErrNotFound) {
+	if _, err := st.GetSheet(ctx, store.SheetURI("did:plc:a", "3k1"), ""); !errors.Is(err, store.ErrNotFound) {
 		t.Fatal("deactivated account's sheet still visible")
 	}
 	account(true, "")
-	if _, err := st.GetSheet(ctx, store.SheetURI("did:plc:a", "3k1")); err != nil {
+	if _, err := st.GetSheet(ctx, store.SheetURI("did:plc:a", "3k1"), ""); err != nil {
 		t.Fatalf("reactivated account's sheet hidden: %v", err)
 	}
 	commit("did:plc:a", "delete", "3k1", nil)
-	if _, err := st.GetSheet(ctx, store.SheetURI("did:plc:a", "3k1")); !errors.Is(err, store.ErrNotFound) {
+	if _, err := st.GetSheet(ctx, store.SheetURI("did:plc:a", "3k1"), ""); !errors.Is(err, store.ErrNotFound) {
 		t.Fatal("deleted sheet still indexed")
 	}
 }

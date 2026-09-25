@@ -75,7 +75,8 @@ describe('playThrough', () => {
     const seen: [number, number][] = []
     let ended = false
     // 120 bpm: a bar is 2 s.
-    playThrough([C, G, null, C], [40, 45, 50, 55, 59, 64], 0, 120, (i) => seen.push([i, FakeContext.now]), () => (ended = true))
+    const bar = (frets: typeof C | null) => ({ frets, beats: 4 })
+    playThrough([bar(C), bar(G), bar(null), bar(C)], [40, 45, 50, 55, 59, 64], 0, 120, (i) => seen.push([i, FakeContext.now]), () => (ended = true))
     run(9)
     expect(seen.map(([i]) => i)).toEqual([0, 1, 2, 3])
     // Each chord lands on its bar line (to the 50 ms the fake clock steps by).
@@ -87,11 +88,23 @@ describe('playThrough', () => {
     expect(started.length).toBe(perBar(5) + perBar(6) + perBar(5))
   })
 
+  it('gives each chord its own length', async () => {
+    const { playThrough } = await import('@/lib/pluck')
+    const C = [null, 3, 2, 0, 1, 0]
+    const seen: [number, number][] = []
+    // 120 bpm: 2 beats = 1 s, 6 beats = 3 s.
+    playThrough([2, 6, 2].map((beats) => ({ frets: C, beats })), [40, 45, 50, 55, 59, 64], 0, 120, (i) => seen.push([i, FakeContext.now]), () => {})
+    run(7)
+    expect(seen.map(([i]) => i)).toEqual([0, 1, 2])
+    const starts = [0, 1, 4].map((s) => 0.1 + s)
+    seen.forEach(([i, t]) => expect(Math.abs(t - starts[i])).toBeLessThanOrEqual(0.06))
+  })
+
   it('stops, including strums queued ahead', async () => {
     const { playThrough } = await import('@/lib/pluck')
     const C = [null, 3, 2, 0, 1, 0]
     const seen: number[] = []
-    const stop = playThrough([C, C, C], [40, 45, 50, 55, 59, 64], 0, 60, (i) => seen.push(i), () => {})
+    const stop = playThrough([C, C, C].map((frets) => ({ frets, beats: 4 })), [40, 45, 50, 55, 59, 64], 0, 60, (i) => seen.push(i), () => {})
     run(1)
     stop()
     const queuedLater = started.filter((s) => s.when > FakeContext.now)

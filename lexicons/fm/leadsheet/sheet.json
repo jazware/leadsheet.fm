@@ -122,6 +122,11 @@
             },
             "description": "Chord shapes the author chose, at most one per chord. Readers see these instead of the shapes the app would pick."
           },
+          "draft": {
+            "type": "boolean",
+            "default": false,
+            "description": "Not published yet: apps list and search only published sheets, and show a draft only to its author. Like any record, a draft is still publicly readable from the author's repo."
+          },
           "forkOf": {
             "type": "ref",
             "ref": "com.atproto.repo.strongRef",
