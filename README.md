@@ -49,6 +49,18 @@ root, fifth and octave. Playing sounds like the instrument: a softer
 pluck for nylon ukulele strings, and a bass line (root, root-root, fifth,
 octave) instead of a strum.
 
+## Reading for another instrument
+
+"Show for" on a sheet shows its chords for guitar, ukulele, bass or piano,
+whatever it was written for (remembered in the browser). Another
+instrument reads the chords at their sounding pitch (a capo-5 guitar
+chart's Am shows as Dm), in that instrument's standard tuning, with its
+own capo starting at none; the author's own shapes apply only on the
+instrument the sheet is for. Piano (`ui/src/lib/piano.ts`) shows the right
+hand on a keyboard with the bass note under it, steps through inversions,
+and plays with a synthesized piano: the chord on 1 and 3, the right hand
+on 2 and 4.
+
 ## Links
 
 A sheet's optional `links` (up to five) say where to hear the recording it

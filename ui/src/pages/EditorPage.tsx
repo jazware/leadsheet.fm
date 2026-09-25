@@ -51,6 +51,7 @@ const KINDS = [
   ['tab', 'Tab'],
   ['ukulele', 'Ukulele'],
   ['bass', 'Bass'],
+  ['piano', 'Piano'],
 ] as const
 
 const fromSheet = sheetInput
@@ -147,8 +148,10 @@ function Editor({
 
   const set = <K extends keyof SheetInput>(k: K, v: SheetInput[K]) => setForm((f) => ({ ...f, [k]: v }))
   const doc = useMemo(() => parseChordPro(form.content || EXAMPLE), [form.content])
+  // Piano has no strings: no tuning or capo to set.
+  const fretted = form.kind !== 'piano'
   const tuning = getTuning(form.tuning, form.kind)
-  const strings = shapeStrings(tuning)
+  const strings = fretted ? shapeStrings(tuning) : []
   // Stepping through a chord's shapes in the editor (preview tooltips or
   // the Shapes list) sets the sheet's own shape for it.
   const shapes = useMemo(
@@ -308,7 +311,12 @@ function Editor({
                 aria-checked={form.kind === k}
                 onClick={() =>
                   // A tuning the new instrument doesn't have goes back to its standard.
-                  setForm((f) => ({ ...f, kind: k, tuning: tuningsFor(k).some((t) => t.id === f.tuning) ? f.tuning : 'standard' }))
+                  setForm((f) => ({
+                    ...f,
+                    kind: k,
+                    tuning: tuningsFor(k).some((t) => t.id === f.tuning) ? f.tuning : 'standard',
+                    capo: k === 'piano' || k === 'bass' ? 0 : f.capo,
+                  }))
                 }
                 className={clsx(
                   'h-10 flex-1 rounded-full text-sm font-extrabold',
@@ -320,10 +328,11 @@ function Editor({
             ))}
           </div>
         </div>
-        <div className="grid grid-cols-[1fr_6.5rem] gap-3">
+        <div className={clsx('grid gap-3', fretted && form.kind !== 'bass' ? 'grid-cols-[1fr_6.5rem]' : 'grid-cols-1')}>
           <Field label="Key of the chords">
             <input className="field" placeholder="G" value={form.key} onChange={(e) => set('key', e.target.value)} />
           </Field>
+          {fretted && form.kind !== 'bass' && (
           <Field label="Capo">
             <input
               className="field"
@@ -335,17 +344,20 @@ function Editor({
               onChange={(e) => set('capo', Math.max(0, Math.min(12, Number(e.target.value) || 0)))}
             />
           </Field>
+          )}
         </div>
-        <div className="grid grid-cols-2 gap-3">
-          <Field label="Tuning">
-            <select className="field" value={form.tuning} onChange={(e) => set('tuning', e.target.value)}>
-              {tuningsFor(form.kind).map((t) => (
-                <option key={t.id} value={t.id}>
-                  {t.name}
-                </option>
-              ))}
-            </select>
-          </Field>
+        <div className={clsx('grid gap-3', fretted ? 'grid-cols-2' : 'grid-cols-1')}>
+          {fretted && (
+            <Field label="Tuning">
+              <select className="field" value={form.tuning} onChange={(e) => set('tuning', e.target.value)}>
+                {tuningsFor(form.kind).map((t) => (
+                  <option key={t.id} value={t.id}>
+                    {t.name}
+                  </option>
+                ))}
+              </select>
+            </Field>
+          )}
           <Field label="Difficulty">
             <select className="field" value={form.difficulty} onChange={(e) => set('difficulty', e.target.value)}>
               <option value="">Not set</option>
@@ -443,13 +455,14 @@ function Editor({
 
         <div className={clsx('min-w-0', tab !== 'preview' && 'hidden lg:block')}>
           <SheetShapesProvider value={shapes}>
-            <ChordSoundContext.Provider value={{ strings: tuning.strings, capo: form.capo, instrument: instrumentOf(form.kind) }}>
-              {form.content.trim() && (
+            <ChordSoundContext.Provider value={{ strings: fretted ? tuning.strings : [], capo: form.capo, instrument: instrumentOf(form.kind) }}>
+              {/* Saved shapes are fretted; piano voicings aren't part of a sheet. */}
+              {fretted && form.content.trim() && (
                 <ShapesEditor doc={doc} strings={strings} count={liveVoicings(form.voicings, doc).length} />
               )}
               <div className="label">Preview{!form.content && ' of the example'}</div>
               <div className={clsx('rounded-[20px] border-2 border-surface p-5', !form.content && 'opacity-60')}>
-                <ChordTipContext.Provider value={{ strings }}>
+                <ChordTipContext.Provider value={{ strings, instrument: instrumentOf(form.kind) }}>
                   <SheetView doc={doc} options={{ shift: 0, flats: false, simplify: false, fontSize: 18 }} />
                 </ChordTipContext.Provider>
               </div>

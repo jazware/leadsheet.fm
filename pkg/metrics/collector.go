@@ -104,7 +104,7 @@ func (c *Collector) Collect(ch chan<- prometheus.Metric) {
 		gauge(descSignedIn, float64(u.SignedInAccounts))
 		gauge(descOGCards, float64(u.OgCards))
 		gauge(descDBSize, float64(u.DbSizeBytes))
-		for _, kind := range []string{"chords", "tab", "ukulele", "bass"} {
+		for _, kind := range []string{"chords", "tab", "ukulele", "bass", "piano"} {
 			gauge(descSheetsByKind, float64(u.SheetsByKind[kind]), kind)
 		}
 	}

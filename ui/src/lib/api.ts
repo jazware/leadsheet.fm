@@ -17,7 +17,7 @@ export interface StrongRef {
   cid: string
 }
 
-export type Kind = 'chords' | 'tab' | 'ukulele' | 'bass'
+export type Kind = 'chords' | 'tab' | 'ukulele' | 'bass' | 'piano'
 
 export interface SheetSummary {
   uri: string
@@ -224,4 +224,5 @@ export const KIND_LABEL: Record<string, string> = {
   tab: 'Tab',
   ukulele: 'Ukulele',
   bass: 'Bass',
+  piano: 'Piano',
 }

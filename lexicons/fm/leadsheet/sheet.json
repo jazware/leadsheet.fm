@@ -40,10 +40,11 @@
               "chords",
               "tab",
               "ukulele",
-              "bass"
+              "bass",
+              "piano"
             ],
             "default": "chords",
-            "description": "What the sheet is for: chords over lyrics, guitar tablature, ukulele chords, or bass."
+            "description": "What the sheet is for: chords over lyrics (guitar), guitar tablature, ukulele chords, bass, or piano."
           },
           "format": {
             "type": "string",

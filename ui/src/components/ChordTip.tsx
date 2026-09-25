@@ -1,16 +1,16 @@
 import { createContext, useContext, useEffect, useId, useRef, useState } from 'react'
 import { clsx } from 'clsx'
 import { ChordDiagram } from '@/components/ChordDiagram'
-import { ChordSoundContext, useVoicing } from '@/components/Voicings'
-import { strum } from '@/lib/pluck'
+import { ChordSoundContext, usePianoVoicing, useVoicing } from '@/components/Voicings'
+import { playChord, strum } from '@/lib/pluck'
 import { mod12, simplifyQuality, type ChordSymbol } from '@/lib/music'
-import { STANDARD_STRINGS } from '@/lib/tunings'
+import { STANDARD_STRINGS, type Instrument } from '@/lib/tunings'
 
 /**
  * Whether chord names in a sheet show their shape on hover, and for which
  * tuning. Off for ukulele and bass sheets (the boxes are guitar shapes).
  */
-export const ChordTipContext = createContext<{ strings: number[] } | null>({ strings: STANDARD_STRINGS })
+export const ChordTipContext = createContext<{ strings: number[]; instrument?: Instrument } | null>({ strings: STANDARD_STRINGS })
 
 /**
  * A chord name that shows its chord box on hover or focus, and on tap for
@@ -48,12 +48,16 @@ export function ChordTip({
     bass: chord.bass === null ? null : mod12(chord.bass + shift),
     quality: simplify && chord.quality ? simplifyQuality(chord.quality) : chord.quality,
   }
-  const { step, voicing } = useVoicing(shown, ctx?.strings ?? STANDARD_STRINGS)
+  const piano = ctx?.instrument === 'piano'
+  const fretted = useVoicing(piano ? null : shown, ctx?.strings ?? STANDARD_STRINGS)
+  const keys = usePianoVoicing(piano ? shown : null)
+  const step = piano ? keys.step : fretted.step
   const sound = useContext(ChordSoundContext)
   // Clicking (or tapping) a chord name plays it.
   const play = () => {
     if (onPlay?.()) return
-    if (voicing && sound) strum(voicing.frets, sound.strings, sound.capo, sound.instrument)
+    if (piano && keys.voicing) playChord(keys.voicing.notes, 'piano')
+    else if (fretted.voicing && sound) strum(fretted.voicing.frets, sound.strings, sound.capo, sound.instrument)
   }
 
   // A tap elsewhere closes a tapped-open tip.
@@ -105,7 +109,7 @@ export function ChordTip({
           className={clsx('absolute left-1/2 z-40 -translate-x-1/2', below ? 'top-full pt-2' : 'bottom-full pb-2')}
         >
           <span className="block rounded-2xl border border-rule bg-surface-raised p-1 text-base text-ink shadow-float">
-            <ChordDiagram chord={shown} label={label} flats={flats} strings={ctx.strings} cycle />
+            <ChordDiagram chord={shown} label={label} flats={flats} strings={ctx.strings} instrument={ctx.instrument} cycle />
           </span>
         </span>
       )}

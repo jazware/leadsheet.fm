@@ -71,6 +71,7 @@ var kindNoun = map[string]string{
 	"tab":     "tab",
 	"ukulele": "ukulele chords",
 	"bass":    "bass tab",
+	"piano":   "piano chords",
 }
 
 // pageMeta works out a client route's title and preview. Anything it

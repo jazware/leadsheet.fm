@@ -1,10 +1,10 @@
 import { ChevronLeft, ChevronRight } from 'lucide-react'
 import { useContext, useEffect, useRef } from 'react'
-import { ChordSoundContext, useVoicing } from '@/components/Voicings'
+import { ChordSoundContext, usePianoVoicing, useVoicing } from '@/components/Voicings'
 import { fretsKey } from '@/lib/guitar'
-import { audioStarted, strum } from '@/lib/pluck'
+import { audioStarted, playChord, strum } from '@/lib/pluck'
 import { noteName, pretty, type ChordSymbol } from '@/lib/music'
-import { instrumentFor, STANDARD_STRINGS, TUNINGS } from '@/lib/tunings'
+import { instrumentFor, STANDARD_STRINGS, TUNINGS, type Instrument } from '@/lib/tunings'
 
 const FRETS = 5
 const W = 72
@@ -13,25 +13,33 @@ const PAD_X = 10
 const TOP = 18
 const GAP_Y = (H - TOP - 6) / FRETS
 
-/**
- * A guitar chord box: the easiest voicing we know, or the one the reader
- * picked for this chord. With `cycle`, arrows under the box step through
- * the others.
- */
-export function ChordDiagram({
-  chord,
-  label,
-  flats,
-  strings = STANDARD_STRINGS,
-  cycle,
-}: {
+type DiagramProps = {
   chord: ChordSymbol
   label: string
   flats: boolean
   /** Open-string pitches the shape is for; labelled under the box unless standard. */
   strings?: number[]
+  /** Piano draws a keyboard; anything else, a fretboard box for `strings`. */
+  instrument?: Instrument
   cycle?: boolean
-}) {
+}
+
+/**
+ * A chord's shape: a fretted chord box (the easiest voicing we know, or
+ * the one the reader picked), or on piano a keyboard. With `cycle`,
+ * arrows under it step through the others.
+ */
+export function ChordDiagram(props: DiagramProps) {
+  return props.instrument === 'piano' ? <PianoDiagram {...props} /> : <FrettedDiagram {...props} />
+}
+
+function FrettedDiagram({
+  chord,
+  label,
+  flats,
+  strings = STANDARD_STRINGS,
+  cycle,
+}: DiagramProps) {
   const { voicing: v, index, shapes, step: stepVoicing, own } = useVoicing(chord, strings)
   const sound = useContext(ChordSoundContext)
   const play = () => v && sound && strum(v.frets, sound.strings, sound.capo, sound.instrument)
@@ -146,46 +154,141 @@ export function ChordDiagram({
           ))}
         </div>
       )}
-      {cycle && shapes.length > 1 && (
-        <div className="mt-1 flex w-full items-center justify-between text-ink-soft">
-          {/* mousedown kept from the chord name's button, so its tooltip stays open. */}
+      {cycle && shapes.length > 1 && <Cycle label={label} index={index} count={shapes.length} own={own} step={step} />}
+    </figure>
+  )
+}
+
+/** The ‹ n/m › row under a diagram. */
+function Cycle({ label, index, count, own, step }: { label: string; index: number; count: number; own?: boolean; step: (d: number) => void }) {
+  return (
+    
+    <div className="mt-1 flex w-full items-center justify-between text-ink-soft">
+      {/* mousedown kept from the chord name's button, so its tooltip stays open. */}
+      <button
+        type="button"
+        tabIndex={-1}
+        className="flex h-6 w-6 items-center justify-center rounded-full hover:bg-surface-raised hover:text-ink"
+        onMouseDown={(e) => e.preventDefault()}
+        onClick={(e) => {
+          e.stopPropagation()
+          step(-1)
+        }}
+        aria-label={`Previous ${label} voicing`}
+      >
+        <ChevronLeft className="h-4 w-4" aria-hidden />
+      </button>
+      <span className="flex items-center gap-1 text-[0.65rem] font-extrabold tabular-nums" aria-live="polite">
+        {own && <span className="h-1.5 w-1.5 rounded-full bg-chord" title="The sheet's shape" aria-hidden />}
+        <span className="sr-only">Voicing </span>
+        {index + 1}
+        <span aria-hidden>/</span>
+        <span className="sr-only"> of </span>
+        {count}
+        {own && <span className="sr-only">, the sheet's shape</span>}
+      </span>
+      <button
+        type="button"
+        tabIndex={-1}
+        className="flex h-6 w-6 items-center justify-center rounded-full hover:bg-surface-raised hover:text-ink"
+        onMouseDown={(e) => e.preventDefault()}
+        onClick={(e) => {
+          e.stopPropagation()
+          step(1)
+        }}
+        aria-label={`Next ${label} voicing`}
+      >
+        <ChevronRight className="h-4 w-4" aria-hidden />
+      </button>
+    </div>
+  )
+}
+
+// A keyboard two octaves wide.
+const KEYS_W = 112
+const KEYS_H = 40
+const WHITE = [0, 2, 4, 5, 7, 9, 11]
+
+/**
+ * A chord on piano: the right hand's keys marked on two octaves, the left
+ * hand's bass note named under them. Steps through inversions.
+ */
+function PianoDiagram({ chord, label, flats, cycle }: DiagramProps) {
+  const { voicing: v, index, shapes, step: stepVoicing } = usePianoVoicing(chord)
+  const sound = useContext(ChordSoundContext)
+  const play = () => v && playChord(v.notes, 'piano')
+  const stepped = useRef(false)
+  const step = (d: number) => {
+    stepped.current = audioStarted()
+    stepVoicing(d)
+  }
+  const heard = v ? v.notes.join(',') : ''
+  useEffect(() => {
+    if (stepped.current) play()
+    stepped.current = false
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [heard])
+  const [lh, ...rh] = v?.notes ?? []
+  // Two octaves from the C at or below the right hand.
+  const from = rh.length ? rh[0] - (rh[0] % 12) : 60
+  const whiteW = KEYS_W / 14
+  const keyX = (midi: number) => {
+    const octave = Math.floor((midi - from) / 12)
+    const pc = midi % 12
+    const white = WHITE.indexOf(pc)
+    if (white >= 0) return { x: (octave * 7 + white) * whiteW, black: false }
+    return { x: (octave * 7 + WHITE.indexOf(pc - 1) + 1) * whiteW - whiteW * 0.3, black: true }
+  }
+  const box = v && (
+    <svg viewBox={`0 0 ${KEYS_W} ${KEYS_H}`} className="w-24 text-ink" role="img" aria-label={`${label}: ${rh.map((n) => noteName(n, flats)).join(' ')}, ${noteName(lh, flats)} in the bass`}>
+      {Array.from({ length: 14 }, (_, i) => (
+        <rect key={`w${i}`} x={i * whiteW + 0.5} y={0.5} width={whiteW - 1} height={KEYS_H - 1} rx={1.5} fill="currentColor" fillOpacity={0.9} />
+      ))}
+      {Array.from({ length: 24 }, (_, i) => from + i)
+        .filter((m) => !WHITE.includes(m % 12))
+        .map((m) => (
+          <rect key={`b${m}`} x={keyX(m).x} y={0} width={whiteW * 0.6} height={KEYS_H * 0.6} rx={1} className="fill-bg" />
+        ))}
+      {rh.map((m) => {
+        const k = keyX(m)
+        const cx = k.black ? k.x + whiteW * 0.3 : k.x + whiteW / 2
+        return <circle key={m} cx={cx} cy={k.black ? KEYS_H * 0.45 : KEYS_H * 0.8} r={2.8} className="fill-chord" />
+      })}
+    </svg>
+  )
+  return (
+    <figure className="relative flex w-[6.75rem] shrink-0 flex-col items-center rounded-2xl bg-surface px-1 pb-1.5 pt-2.5">
+      <figcaption className="mb-1.5 text-base font-black leading-none text-chord">{pretty(label)}</figcaption>
+      {v ? (
+        sound ? (
           <button
             type="button"
-            tabIndex={-1}
-            className="flex h-6 w-6 items-center justify-center rounded-full hover:bg-surface-raised hover:text-ink"
+            className="rounded-lg p-0.5 hover:bg-surface-raised focus-visible:ring-2 focus-visible:ring-chord"
             onMouseDown={(e) => e.preventDefault()}
             onClick={(e) => {
               e.stopPropagation()
-              step(-1)
+              play()
             }}
-            aria-label={`Previous ${label} voicing`}
+            aria-label={`Hear ${label}`}
+            title="Hear it"
           >
-            <ChevronLeft className="h-4 w-4" aria-hidden />
+            {box}
           </button>
-          <span className="flex items-center gap-1 text-[0.65rem] font-extrabold tabular-nums" aria-live="polite">
-            {own && <span className="h-1.5 w-1.5 rounded-full bg-chord" title="The sheet's shape" aria-hidden />}
-            <span className="sr-only">Voicing </span>
-            {index + 1}
-            <span aria-hidden>/</span>
-            <span className="sr-only"> of </span>
-            {shapes.length}
-            {own && <span className="sr-only">, the sheet's shape</span>}
-          </span>
-          <button
-            type="button"
-            tabIndex={-1}
-            className="flex h-6 w-6 items-center justify-center rounded-full hover:bg-surface-raised hover:text-ink"
-            onMouseDown={(e) => e.preventDefault()}
-            onClick={(e) => {
-              e.stopPropagation()
-              step(1)
-            }}
-            aria-label={`Next ${label} voicing`}
-          >
-            <ChevronRight className="h-4 w-4" aria-hidden />
-          </button>
+        ) : (
+          box
+        )
+      ) : (
+        <div className="flex h-10 w-24 items-center justify-center text-center text-[0.65rem] font-bold leading-tight text-ink-soft">
+          no voicing for this one yet
         </div>
       )}
+      {v && (
+        <div className="mt-1 text-[0.65rem] font-bold text-ink-soft">
+          bass {pretty(noteName(lh, flats))}
+          {v.inversion > 0 && <> · {['', '1st', '2nd', '3rd'][v.inversion]} inv.</>}
+        </div>
+      )}
+      {cycle && shapes.length > 1 && <Cycle label={label} index={index} count={shapes.length} step={step} />}
     </figure>
   )
 }

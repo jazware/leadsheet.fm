@@ -1,11 +1,11 @@
 // Ids match the fm.leadsheet.sheet `tuning` knownValues. "standard" (or
 // no tuning) is each instrument's own standard.
 
-export type Instrument = 'guitar' | 'ukulele' | 'bass'
+export type Instrument = 'guitar' | 'ukulele' | 'bass' | 'piano'
 
 /** The instrument a sheet kind is for: chords and tab are guitar. */
 export const instrumentOf = (kind: string | null | undefined): Instrument =>
-  kind === 'ukulele' ? 'ukulele' : kind === 'bass' ? 'bass' : 'guitar'
+  kind === 'ukulele' ? 'ukulele' : kind === 'bass' ? 'bass' : kind === 'piano' ? 'piano' : 'guitar'
 
 export interface Tuning {
   id: string
@@ -57,7 +57,8 @@ export const tuningsFor = (kind: string | null | undefined) => TUNINGS.filter((t
 /** A sheet's tuning; the instrument's standard when unset or not one of its tunings. */
 export function getTuning(id: string | null | undefined, kind: string | null | undefined = 'chords'): Tuning {
   const options = tuningsFor(kind)
-  return options.find((t) => t.id === id) ?? options[0]
+  // (Piano has no tunings: guitar standard stands in, for code that asks anyway.)
+  return options.find((t) => t.id === id) ?? options[0] ?? TUNINGS[0]
 }
 
 /** The strings the chord shapes are drawn for: standard for shifted tunings. */

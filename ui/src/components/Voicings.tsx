@@ -4,6 +4,7 @@ import { fretsKey, fromRecordFrets, shapesFor, voicingFromFrets, type Frets, typ
 import { parseChord, type ChordSymbol } from '@/lib/music'
 import type { SheetVoicing } from '@/lib/api'
 import type { Instrument } from '@/lib/tunings'
+import { pianoKey, pianoVoicings, type PianoVoicing } from '@/lib/piano'
 
 type ChordLike = Pick<ChordSymbol, 'root' | 'quality' | 'suffix'> & { bass?: number | null }
 
@@ -174,3 +175,32 @@ export function useVoicing(chord: ChordLike | null, strings: number[]) {
  * capo the reader has on. Without it, boxes are silent.
  */
 export const ChordSoundContext = createContext<{ strings: number[]; capo: number; instrument: Instrument } | null>(null)
+
+/**
+ * A chord on piano: its voicings (root position and inversions), the one
+ * the reader picked, and a way to step through them.
+ */
+export function usePianoVoicing(chord: ChordLike | null) {
+  const { picks, pick } = useContext(PickContext)
+  const root = chord?.root ?? 0
+  const quality = chord?.quality ?? null
+  const bass = chord?.bass ?? null
+  const shapes = useMemo(() => (quality ? pianoVoicings({ root, quality, bass }) : []), [root, quality, bass])
+  const storeKey = chord ? `piano|${chordKey(chord)}` : ''
+  const picked = shapes.findIndex((v) => pianoKey(v) === picks[storeKey])
+  const index = picked >= 0 ? picked : 0
+  const step = (d: number) => {
+    if (shapes.length < 2 || !chord) return
+    const next = shapes[(index + d + shapes.length) % shapes.length]
+    pick(storeKey, next === shapes[0] ? null : pianoKey(next))
+  }
+  return { shapes, index, voicing: shapes[index] as PianoVoicing | undefined, step }
+}
+
+/** The piano voicing a chord shows (as usePianoVoicing), for playing the whole chart. */
+export function resolvePiano(chord: ChordLike, picks: Record<string, string>): PianoVoicing | undefined {
+  if (!chord.quality) return undefined
+  const shapes = pianoVoicings({ root: chord.root, quality: chord.quality, bass: chord.bass })
+  const pick = picks[`piano|${chordKey(chord)}`]
+  return shapes.find((v) => pianoKey(v) === pick) ?? shapes[0]
+}

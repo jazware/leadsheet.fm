@@ -70,13 +70,13 @@ describe('playThrough', () => {
 
   it('plays each chord for a bar, in order, then ends', async () => {
     const { playThrough } = await import('@/lib/pluck')
-    const C = [null, 3, 2, 0, 1, 0]
-    const G = [3, 2, 0, 0, 0, 3]
+    const C = [48, 52, 55, 60, 64] // x32010
+    const G = [43, 47, 50, 55, 59, 67] // 320003
     const seen: [number, number][] = []
     let ended = false
     // 120 bpm: a bar is 2 s.
-    const bar = (frets: typeof C | null) => ({ frets, beats: 4 })
-    playThrough([bar(C), bar(G), bar(null), bar(C)], [40, 45, 50, 55, 59, 64], 0, 120, (i) => seen.push([i, FakeContext.now]), () => (ended = true))
+    const bar = (notes: number[] | null) => ({ notes, beats: 4 })
+    playThrough([bar(C), bar(G), bar(null), bar(C)], 120, (i) => seen.push([i, FakeContext.now]), () => (ended = true))
     run(9)
     expect(seen.map(([i]) => i)).toEqual([0, 1, 2, 3])
     // Each chord lands on its bar line (to the 50 ms the fake clock steps by).
@@ -90,10 +90,10 @@ describe('playThrough', () => {
 
   it('gives each chord its own length', async () => {
     const { playThrough } = await import('@/lib/pluck')
-    const C = [null, 3, 2, 0, 1, 0]
+    const C = [48, 52, 55, 60, 64]
     const seen: [number, number][] = []
     // 120 bpm: 2 beats = 1 s, 6 beats = 3 s.
-    playThrough([2, 6, 2].map((beats) => ({ frets: C, beats })), [40, 45, 50, 55, 59, 64], 0, 120, (i) => seen.push([i, FakeContext.now]), () => {})
+    playThrough([2, 6, 2].map((beats) => ({ notes: C, beats })), 120, (i) => seen.push([i, FakeContext.now]), () => {})
     run(7)
     expect(seen.map(([i]) => i)).toEqual([0, 1, 2])
     const starts = [0, 1, 4].map((s) => 0.1 + s)
@@ -102,9 +102,9 @@ describe('playThrough', () => {
 
   it('stops, including strums queued ahead', async () => {
     const { playThrough } = await import('@/lib/pluck')
-    const C = [null, 3, 2, 0, 1, 0]
+    const C = [48, 52, 55, 60, 64]
     const seen: number[] = []
-    const stop = playThrough([C, C, C].map((frets) => ({ frets, beats: 4 })), [40, 45, 50, 55, 59, 64], 0, 60, (i) => seen.push(i), () => {})
+    const stop = playThrough([C, C, C].map((notes) => ({ notes, beats: 4 })), 60, (i) => seen.push(i), () => {})
     run(1)
     stop()
     const queuedLater = started.filter((s) => s.when > FakeContext.now)
