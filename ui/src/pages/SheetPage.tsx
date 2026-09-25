@@ -3,7 +3,7 @@ import { createPortal } from 'react-dom'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import { clsx } from 'clsx'
 import { useQueryClient } from '@tanstack/react-query'
-import { ArrowLeft, Bookmark, ExternalLink, GitFork, Maximize2, Mic, MicOff, Minus, Pause, Pencil, Play, Plus, Printer, SlidersHorizontal, Square, Volume2, X } from 'lucide-react'
+import { ArrowLeft, Bookmark, ChevronDown, ExternalLink, GitFork, Maximize2, Mic, MicOff, Minus, Pause, Pencil, Play, Plus, Printer, SlidersHorizontal, Square, Volume2, X } from 'lucide-react'
 import { api, KIND_LABEL, sheetInput, sheetPath, type SheetPage as SheetPageData } from '@/lib/api'
 import { chordsIn, parseChordPro, type Segment } from '@/lib/chordpro'
 import { embedFor, isWebLink, linkLabel } from '@/lib/links'
@@ -298,6 +298,8 @@ function ScrollShapes({ label, children }: { label: React.ReactNode; children: R
   const box = useRef<HTMLDivElement>(null)
   const list = useRef<HTMLDivElement>(null)
   const [fade, setFade] = useState({ top: false, bottom: false })
+  // How many shapes are wholly or partly below the fold, for the "more" pill.
+  const [below, setBelow] = useState(0)
   const [twoRows, setTwoRows] = useState<number | undefined>()
 
   useEffect(() => {
@@ -305,8 +307,10 @@ function ScrollShapes({ label, children }: { label: React.ReactNode; children: R
     if (!el) return
     const update = () => {
       setFade({ top: el.scrollTop > 2, bottom: el.scrollTop + el.clientHeight < el.scrollHeight - 2 })
-      // Two rows of boxes: the first box's height, twice, plus the gap.
       const grid = el.firstElementChild as HTMLElement | null
+      const fold = el.getBoundingClientRect().bottom - 8
+      setBelow(grid ? [...grid.children].filter((b) => b.getBoundingClientRect().bottom > fold).length : 0)
+      // Two rows of boxes: the first box's height, twice, plus the gap.
       const first = grid?.firstElementChild as HTMLElement | null
       if (grid && first) setTwoRows(first.offsetHeight * 2 + parseFloat(getComputedStyle(grid).rowGap || '0'))
     }
@@ -322,7 +326,7 @@ function ScrollShapes({ label, children }: { label: React.ReactNode; children: R
   }, [])
 
   return (
-    <div ref={box} className="flex min-h-0 flex-1 flex-col" style={{ minHeight: twoRows !== undefined ? twoRows + 24 : undefined }}>
+    <div ref={box} className="relative flex min-h-0 flex-1 flex-col" style={{ minHeight: twoRows !== undefined ? twoRows + 24 : undefined }}>
       <div className="label shrink-0">{label}</div>
       <div
         ref={list}
@@ -332,6 +336,18 @@ function ScrollShapes({ label, children }: { label: React.ReactNode; children: R
       >
         {children}
       </div>
+      {fade.bottom && below > 0 && (
+        <button
+          type="button"
+          tabIndex={-1}
+          aria-hidden
+          className="absolute bottom-1 left-1/2 flex -translate-x-1/2 items-center gap-1 whitespace-nowrap rounded-full border border-rule bg-surface-raised py-1 pl-3 pr-2 text-[0.75rem] font-extrabold text-ink shadow-float hover:text-chord"
+          onClick={() => list.current?.scrollBy({ top: list.current.clientHeight * 0.8, behavior: 'smooth' })}
+        >
+          {below} more {below === 1 ? 'shape' : 'shapes'}
+          <ChevronDown className="h-3.5 w-3.5" aria-hidden />
+        </button>
+      )}
     </div>
   )
 }
@@ -916,15 +932,17 @@ function SpeedSlider({ c }: { c: Controls }) {
 /** Phones: the controls you reach for mid-song, under your thumb. */
 function BottomBar({ c }: { c: Controls }) {
   const [more, setMore] = useState(false)
-  const mini = (label: string, value: string, onStep: (d: number) => void) => (
-    <div className="flex flex-col items-center">
+  // Fixed widths, so nothing in the bar moves as the key changes or the
+  // capo comes and goes.
+  const mini = (label: string, value: string, onStep: (d: number) => void, hidden = false) => (
+    <div className={clsx('flex w-[5.5rem] shrink-0 flex-col items-center', hidden && 'invisible')} aria-hidden={hidden || undefined}>
       <span className="text-[0.65rem] font-extrabold text-ink-soft">{label}</span>
       <div className="flex items-center">
-        <button type="button" className="flex h-10 w-8 items-center justify-center" onClick={() => onStep(-1)} aria-label={`${label} down`}>
+        <button type="button" className="flex h-10 w-7 items-center justify-center" onClick={() => onStep(-1)} aria-label={`${label} down`}>
           <Minus className="h-4 w-4" aria-hidden />
         </button>
-        <span className="min-w-[1.5rem] text-center text-lg font-black">{value}</span>
-        <button type="button" className="flex h-10 w-8 items-center justify-center" onClick={() => onStep(1)} aria-label={`${label} up`}>
+        <span className="w-8 whitespace-nowrap text-center text-lg font-black tracking-tight">{value}</span>
+        <button type="button" className="flex h-10 w-7 items-center justify-center" onClick={() => onStep(1)} aria-label={`${label} up`}>
           <Plus className="h-4 w-4" aria-hidden />
         </button>
       </div>
@@ -972,7 +990,7 @@ function BottomBar({ c }: { c: Controls }) {
       )}
       <div className="flex items-center justify-between rounded-[28px] border border-rule bg-surface px-1.5 py-1.5 shadow-float">
         {mini('Key', keyValue(c), c.stepTranspose)}
-        {c.capoable ? mini('Capo', String(c.capo), c.stepCapo) : <span className="w-24" />}
+        {mini('Capo', String(c.capo), c.stepCapo, !c.capoable)}
         <PlayButton c={c} size="lg" />
         <ListenButton c={c} size="lg" className="bg-transparent" />
         <button
