@@ -188,9 +188,12 @@ func (s *Server) handleOAuthCallback(c echo.Context) error {
 	ctx := c.Request().Context()
 	sess, err := s.oauth.ProcessCallback(ctx, c.QueryParams())
 	if err != nil {
-		s.logger.Warn("oauth callback", "error", err)
-		metrics.Logins.WithLabelValues("callback_failed").Inc()
-		return c.Redirect(http.StatusFound, "/?login_error="+url.QueryEscape(err.Error()))
+		reason := loginFailure(c.QueryParams())
+		s.logger.Warn("oauth callback", "reason", reason, "error", err)
+		metrics.Logins.WithLabelValues("callback_" + reason).Inc()
+		// Back where they started (the return cookie stays for another
+		// try), with a reason the page can explain.
+		return c.Redirect(http.StatusFound, withQuery(s.returnPath(c, false), "login_error", reason))
 	}
 	token, err := s.store.CreateWebSession(ctx, sess.AccountDID, sess.SessionID)
 	if err != nil {
@@ -212,16 +215,50 @@ func (s *Server) handleOAuthCallback(c echo.Context) error {
 		}
 	}(sess.AccountDID.String())
 
+	s.logger.Info("signed in", "did", sess.AccountDID)
+	metrics.Logins.WithLabelValues("completed").Inc()
+	return c.Redirect(http.StatusFound, s.returnPath(c, true))
+}
+
+// returnPath is where sign-in started ("/" if unknown), optionally
+// forgetting it.
+func (s *Server) returnPath(c echo.Context, clear bool) string {
 	returnTo := "/"
 	if ck, err := c.Cookie(returnCookie); err == nil {
 		if v, err := url.QueryUnescape(ck.Value); err == nil && isLocalPath(v) {
 			returnTo = v
 		}
-		c.SetCookie(&http.Cookie{Name: returnCookie, Path: "/", MaxAge: -1})
+		if clear {
+			c.SetCookie(&http.Cookie{Name: returnCookie, Path: "/", MaxAge: -1})
+		}
 	}
-	s.logger.Info("signed in", "did", sess.AccountDID)
-	metrics.Logins.WithLabelValues("completed").Inc()
-	return c.Redirect(http.StatusFound, returnTo)
+	return returnTo
+}
+
+// loginFailure sums up why sign-in didn't finish, from what the
+// authorization server sent back: "expired" (the request timed out, or an
+// old sign-in page was reused), "denied" (the person said no), or
+// "failed" (anything else; the details are logged).
+func loginFailure(q url.Values) string {
+	if q.Get("error") != "access_denied" {
+		return "failed"
+	}
+	if strings.Contains(strings.ToLower(q.Get("error_description")), "expired") {
+		return "expired"
+	}
+	return "denied"
+}
+
+// withQuery sets one query parameter on a local path.
+func withQuery(path, key, value string) string {
+	u, err := url.Parse(path)
+	if err != nil {
+		return "/?" + url.Values{key: {value}}.Encode()
+	}
+	q := u.Query()
+	q.Set(key, value)
+	u.RawQuery = q.Encode()
+	return u.String()
 }
 
 // isLocalPath reports whether p is a path on this site, safe to redirect

@@ -4,7 +4,7 @@ import { useQueryClient } from '@tanstack/react-query'
 import { clsx } from 'clsx'
 import { LogOut, Moon, Plus, Sun } from 'lucide-react'
 import { api, profilePath } from '@/lib/api'
-import { useSession } from '@/hooks/queries'
+import { useSession, useViewer } from '@/hooks/queries'
 import { useTheme } from '@/hooks/useTheme'
 import { LoginDialog } from '@/components/LoginDialog'
 import { LoginContext, useLogin } from '@/components/login'
@@ -22,11 +22,54 @@ import { ArtistPage } from '@/pages/ArtistPage'
 import { ProfilePage } from '@/pages/ProfilePage'
 import { ImportPage } from '@/pages/ImportPage'
 
+// Why sign-in didn't finish, from the callback's login_error.
+const LOGIN_ERRORS: Record<string, string> = {
+  expired: "Sign-in timed out before it was approved. It's good for a few minutes: try again and approve it straight away.",
+  denied: 'Sign-in was cancelled, so nothing changed.',
+}
+
+function LoginError({ reason, onRetry }: { reason: string; onRetry: () => void }) {
+  const [params, setParams] = useSearchParams()
+  const viewer = useViewer()
+  const dismiss = () => {
+    params.delete('login_error')
+    setParams(params, { replace: true })
+  }
+  // Signed in anyway (an old sign-in page, reused): nothing went wrong.
+  const stale = reason === 'expired' && !!viewer
+  useEffect(() => {
+    if (stale) dismiss()
+  })
+  if (stale) return null
+  return (
+    <div className="no-print mb-6 flex flex-wrap items-center justify-between gap-x-4 gap-y-2 rounded-2xl bg-glow px-4 py-3 text-sm font-bold text-glow-ink">
+      <span className="min-w-0 flex-1 basis-64">{LOGIN_ERRORS[reason] ?? "Sign-in didn't finish. Try again, and if it keeps happening, let us know."}</span>
+      <span className="flex shrink-0 items-center gap-3">
+        {!viewer && (
+          <button
+            type="button"
+            className="h-9 rounded-full bg-glow-ink px-4 font-extrabold text-glow"
+            onClick={() => {
+              dismiss()
+              onRetry()
+            }}
+          >
+            Try again
+          </button>
+        )}
+        <button type="button" className="underline" onClick={dismiss}>
+          Dismiss
+        </button>
+      </span>
+    </div>
+  )
+}
+
 export default function App() {
   useSearchShortcut()
   const [login, setLogin] = useState<{ open: boolean; reason?: string }>({ open: false })
   const openLogin = useCallback((reason?: string) => setLogin({ open: true, reason }), [])
-  const [params, setParams] = useSearchParams()
+  const [params] = useSearchParams()
   const loginError = params.get('login_error')
   // Sheets bring their own top bar on phones.
   const onSheet = useMatch('/sheet/:actor/:rkey')
@@ -37,21 +80,7 @@ export default function App() {
         {/* data-page: what autoscroll slides on phones (see glide in SheetPage). */}
         <div data-page className="mx-auto min-h-screen max-w-6xl px-5 pb-28 sm:px-8">
           <Header className={clsx(onSheet && 'hidden lg:flex')} />
-          {loginError && (
-            <div className="no-print mb-6 flex items-start justify-between gap-4 rounded-2xl bg-glow px-4 py-3 text-sm font-bold text-glow-ink">
-              <span>Sign-in didn't finish: {loginError}</span>
-              <button
-                type="button"
-                className="underline"
-                onClick={() => {
-                  params.delete('login_error')
-                  setParams(params, { replace: true })
-                }}
-              >
-                Dismiss
-              </button>
-            </div>
-          )}
+          {loginError && <LoginError reason={loginError} onRetry={() => openLogin()} />}
           <main>
             <Routes>
               <Route path="/" element={<HomePage />} />
