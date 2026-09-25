@@ -51,7 +51,7 @@ export function HomePage() {
         </div>
         {list.data ? (
           <SheetList
-            sheets={(tab === 'top' ? list.data.sheets.filter((s) => s.stats.ratingCount > 0) : list.data.sheets).slice(0, 20)}
+            sheets={list.data.pages.flatMap((p) => p.sheets)}
             empty={
               tab === 'recent' ? (
                 <>
@@ -67,6 +67,11 @@ export function HomePage() {
           />
         ) : (
           <p className="font-semibold text-ink-soft">Loading…</p>
+        )}
+        {list.hasNextPage && (
+          <button type="button" className="btn w-max self-center" disabled={list.isFetchingNextPage} onClick={() => list.fetchNextPage()}>
+            {list.isFetchingNextPage ? 'Loading…' : 'Show more'}
+          </button>
         )}
       </section>
     </div>

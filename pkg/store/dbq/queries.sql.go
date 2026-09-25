@@ -598,7 +598,7 @@ func (q *Queries) GetOGCard(ctx context.Context, arg GetOGCardParams) ([]byte, e
 }
 
 const getSheet = `-- name: GetSheet :one
-SELECT ss.uri, ss.did, ss.rkey, ss.cid, ss.title, ss.artist, ss.album, ss.artist_slug, ss.title_slug, ss.kind, ss.key, ss.capo, ss.tuning, ss.difficulty, ss.tags, ss.fork_of_uri, ss.fork_of_cid, ss.created_at, ss.updated_at, ss.draft, ss.handle, ss.display_name, ss.avatar, ss.rating_count, ss.rating_avg, ss.rating_score, ss.favorite_count, ss.fork_count, s.content, s.description, s.voicings
+SELECT ss.uri, ss.did, ss.rkey, ss.cid, ss.title, ss.artist, ss.album, ss.artist_slug, ss.title_slug, ss.kind, ss.key, ss.capo, ss.tuning, ss.difficulty, ss.tags, ss.fork_of_uri, ss.fork_of_cid, ss.created_at, ss.updated_at, ss.draft, ss.handle, ss.display_name, ss.avatar, ss.rating_count, ss.rating_avg, ss.rating_score, ss.favorite_count, ss.fork_count, s.content, s.description, s.voicings, s.links
 FROM sheet_summaries_all ss JOIN sheets s ON s.uri = ss.uri
 WHERE ss.uri = $1
 `
@@ -608,6 +608,7 @@ type GetSheetRow struct {
 	Content           string
 	Description       string
 	Voicings          []byte
+	Links             []string
 }
 
 // Drafts included: the caller decides who may see one.
@@ -646,6 +647,7 @@ func (q *Queries) GetSheet(ctx context.Context, uri string) (GetSheetRow, error)
 		&i.Content,
 		&i.Description,
 		&i.Voicings,
+		&i.Links,
 	)
 	return i, err
 }
@@ -781,7 +783,7 @@ func (q *Queries) ListSheetsRecent(ctx context.Context, arg ListSheetsRecentPara
 }
 
 const listSheetsTop = `-- name: ListSheetsTop :many
-SELECT uri, did, rkey, cid, title, artist, album, artist_slug, title_slug, kind, key, capo, tuning, difficulty, tags, fork_of_uri, fork_of_cid, created_at, updated_at, draft, handle, display_name, avatar, rating_count, rating_avg, rating_score, favorite_count, fork_count FROM sheet_summaries
+SELECT uri, did, rkey, cid, title, artist, album, artist_slug, title_slug, kind, key, capo, tuning, difficulty, tags, fork_of_uri, fork_of_cid, created_at, updated_at, draft, handle, display_name, avatar, rating_count, rating_avg, rating_score, favorite_count, fork_count FROM sheet_summaries WHERE rating_count > 0
 ORDER BY rating_score DESC, favorite_count DESC, created_at DESC
 LIMIT $1 OFFSET $2
 `
@@ -791,6 +793,7 @@ type ListSheetsTopParams struct {
 	Offset int32
 }
 
+// Rated sheets only: an unrated one has nothing to rank it by.
 func (q *Queries) ListSheetsTop(ctx context.Context, arg ListSheetsTopParams) ([]SheetSummary, error) {
 	rows, err := q.db.Query(ctx, listSheetsTop, arg.Limit, arg.Offset)
 	if err != nil {
@@ -1330,17 +1333,17 @@ func (q *Queries) UpsertRating(ctx context.Context, arg UpsertRatingParams) erro
 const upsertSheet = `-- name: UpsertSheet :exec
 INSERT INTO sheets (uri, did, rkey, cid, title, artist, album, artist_slug, title_slug,
     kind, key, capo, tuning, difficulty, description, tags, tags_text, content, lyrics,
-    voicings, draft, fork_of_uri, fork_of_cid, created_at, updated_at)
+    voicings, links, draft, fork_of_uri, fork_of_cid, created_at, updated_at)
 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9,
     $10, $11, $12, $13, $14, $15, $16, $17, $18, $19,
-    $20, $21, $22, $23, $24, $25)
+    $20, $21, $22, $23, $24, $25, $26)
 ON CONFLICT (uri) DO UPDATE SET
     cid = excluded.cid, title = excluded.title, artist = excluded.artist, album = excluded.album,
     artist_slug = excluded.artist_slug, title_slug = excluded.title_slug, kind = excluded.kind,
     key = excluded.key, capo = excluded.capo, tuning = excluded.tuning,
     difficulty = excluded.difficulty, description = excluded.description, tags = excluded.tags,
     tags_text = excluded.tags_text, content = excluded.content, lyrics = excluded.lyrics,
-    voicings = excluded.voicings, draft = excluded.draft,
+    voicings = excluded.voicings, links = excluded.links, draft = excluded.draft,
     fork_of_uri = excluded.fork_of_uri, fork_of_cid = excluded.fork_of_cid,
     created_at = excluded.created_at, updated_at = excluded.updated_at, indexed_at = now()
 `
@@ -1366,6 +1369,7 @@ type UpsertSheetParams struct {
 	Content     string
 	Lyrics      string
 	Voicings    []byte
+	Links       []string
 	Draft       bool
 	ForkOfUri   string
 	ForkOfCid   string
@@ -1395,6 +1399,7 @@ func (q *Queries) UpsertSheet(ctx context.Context, arg UpsertSheetParams) error 
 		arg.Content,
 		arg.Lyrics,
 		arg.Voicings,
+		arg.Links,
 		arg.Draft,
 		arg.ForkOfUri,
 		arg.ForkOfCid,

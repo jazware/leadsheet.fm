@@ -31,28 +31,28 @@ type Stats struct {
 
 // SheetSummary is a sheet without its content, for lists.
 type SheetSummary struct {
-	URI         string             `json:"uri"`
-	DID         string             `json:"did"`
-	Rkey        string             `json:"rkey"`
-	CID         string             `json:"cid"`
-	Title       string             `json:"title"`
-	Artist      string             `json:"artist"`
-	Album       string             `json:"album"`
-	ArtistSlug  string             `json:"artistSlug"`
-	TitleSlug   string             `json:"titleSlug"`
-	Kind        string             `json:"kind"`
-	Key         string             `json:"key"`
-	Capo        int                `json:"capo"`
-	Tuning      string             `json:"tuning"`
-	Difficulty  string             `json:"difficulty"`
-	Tags        []string           `json:"tags"`
-	ForkOf      *records.StrongRef `json:"forkOf,omitempty"`
-	CreatedAt   time.Time          `json:"createdAt"`
-	UpdatedAt   time.Time          `json:"updatedAt"`
+	URI        string             `json:"uri"`
+	DID        string             `json:"did"`
+	Rkey       string             `json:"rkey"`
+	CID        string             `json:"cid"`
+	Title      string             `json:"title"`
+	Artist     string             `json:"artist"`
+	Album      string             `json:"album"`
+	ArtistSlug string             `json:"artistSlug"`
+	TitleSlug  string             `json:"titleSlug"`
+	Kind       string             `json:"kind"`
+	Key        string             `json:"key"`
+	Capo       int                `json:"capo"`
+	Tuning     string             `json:"tuning"`
+	Difficulty string             `json:"difficulty"`
+	Tags       []string           `json:"tags"`
+	ForkOf     *records.StrongRef `json:"forkOf,omitempty"`
+	CreatedAt  time.Time          `json:"createdAt"`
+	UpdatedAt  time.Time          `json:"updatedAt"`
 	// Unpublished: only its author sees it (see GetSheet, Drafts).
-	Draft       bool               `json:"draft"`
-	Author      Author             `json:"author"`
-	Stats       Stats              `json:"stats"`
+	Draft       bool   `json:"draft"`
+	Author      Author `json:"author"`
+	Stats       Stats  `json:"stats"`
 	ratingScore float64
 	// Search only: the lyric excerpt that matched, hits wrapped in
 	// \x02…\x03 ("" when the match wasn't in the lyrics).
@@ -66,6 +66,8 @@ type Sheet struct {
 	Description string `json:"description"`
 	// The record's voicings, as stored: [{"chord", "frets"}, ...].
 	Voicings json.RawMessage `json:"voicings"`
+	// Where to hear the recording (http(s) only).
+	Links []string `json:"links"`
 }
 
 func summary(r dbq.SheetSummary) SheetSummary {
@@ -144,6 +146,13 @@ func (s *Store) UpsertSheet(ctx context.Context, did, rkey, cid string, rec *rec
 	}
 	p.TagsText = strings.Join(p.Tags, " ")
 	p.Draft = rec.Draft
+	// Only web links, whoever wrote the record.
+	p.Links = []string{}
+	for _, l := range rec.Links {
+		if records.WebLink(l) {
+			p.Links = append(p.Links, l)
+		}
+	}
 	if p.Kind == "" {
 		p.Kind = "chords"
 	}
@@ -202,7 +211,11 @@ func (s *Store) GetSheet(ctx context.Context, uri, viewer string) (*Sheet, error
 	if sum.Draft && sum.DID != viewer {
 		return nil, ErrNotFound
 	}
-	return &Sheet{SheetSummary: sum, Content: r.Content, Description: r.Description, Voicings: r.Voicings}, nil
+	links := r.Links
+	if links == nil {
+		links = []string{}
+	}
+	return &Sheet{SheetSummary: sum, Content: r.Content, Description: r.Description, Voicings: r.Voicings, Links: links}, nil
 }
 
 // Drafts lists an account's unpublished sheets, latest edit first. Only

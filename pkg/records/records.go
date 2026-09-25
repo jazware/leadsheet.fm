@@ -6,6 +6,7 @@ package records
 import (
 	"encoding/json"
 	"fmt"
+	"net/url"
 
 	"github.com/bluesky-social/indigo/atproto/atdata"
 	"github.com/bluesky-social/indigo/atproto/lexicon"
@@ -41,6 +42,7 @@ type Sheet struct {
 	Difficulty  string     `json:"difficulty,omitempty"`
 	Description string     `json:"description,omitempty"`
 	Tags        []string   `json:"tags,omitempty"`
+	Links       []string   `json:"links,omitempty"`
 	Voicings    []Voicing  `json:"voicings,omitempty"`
 	Draft       bool       `json:"draft,omitempty"`
 	ForkOf      *StrongRef `json:"forkOf,omitempty"`
@@ -103,4 +105,11 @@ func Decode(collection string, record any, out any) error {
 		return err
 	}
 	return json.Unmarshal(raw, out)
+}
+
+// WebLink reports whether s is an http(s) URL with a host: the only links
+// Leadsheet stores or shows (a record could carry javascript: or worse).
+func WebLink(s string) bool {
+	u, err := url.Parse(s)
+	return err == nil && (u.Scheme == "https" || u.Scheme == "http") && u.Host != ""
 }

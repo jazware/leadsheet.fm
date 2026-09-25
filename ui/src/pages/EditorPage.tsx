@@ -19,6 +19,7 @@ import { ChordDiagram } from '@/components/ChordDiagram'
 import { ChordSoundContext, chordKey, pickKey, readPicks, sheetShapes, SheetShapesProvider, useEditShape, useVoicing } from '@/components/Voicings'
 import { fretsText, parseFrets, toRecordFrets, type Frets } from '@/lib/guitar'
 import { parseChord, symbolText, type ChordSymbol } from '@/lib/music'
+import { isWebLink } from '@/lib/links'
 import type { SheetVoicing } from '@/lib/api'
 
 const EMPTY: SheetInput = {
@@ -34,6 +35,7 @@ const EMPTY: SheetInput = {
   description: '',
   tags: [],
   voicings: [],
+  links: [],
 }
 
 const EXAMPLE = `[Verse 1]
@@ -119,9 +121,9 @@ function Editor({
       const raw = localStorage.getItem(draftKey)
       const saved = raw ? JSON.parse(raw) : null
       if (saved && typeof saved === 'object' && 'form' in saved) {
-        if (saved.base === base) return { ...saved.form, voicings: saved.form.voicings ?? [] }
+        if (saved.base === base) return { ...saved.form, voicings: saved.form.voicings ?? [], links: saved.form.links ?? [] }
       } else if (saved && base === null) {
-        return { ...saved, voicings: saved.voicings ?? [] } // a draft saved before drafts recorded their base
+        return { ...saved, voicings: saved.voicings ?? [], links: saved.links ?? [] } // a draft saved before drafts recorded their base
       }
     } catch {
       // ignore unreadable drafts
@@ -184,6 +186,7 @@ function Editor({
       draft,
       tags: tagText.split(',').map((t) => t.trim()).filter(Boolean),
       voicings: liveVoicings(form.voicings, doc),
+      links: form.links.map((l) => l.trim()).filter(Boolean),
       forkOf: mode === 'fork' ? { uri: source!.uri, cid: source!.cid } : undefined,
     }
     try {
@@ -432,6 +435,7 @@ function Editor({
               onChange={(e) => set('description', e.target.value)}
             />
           </Field>
+          <LinksField links={form.links} onChange={(links) => set('links', links)} />
           <Field label="Tags, separated by commas (optional)">
             <input className="field" placeholder="acoustic, 90s, fingerpicking" value={tagText} onChange={(e) => setTagText(e.target.value)} />
           </Field>
@@ -613,6 +617,41 @@ function ShapeField({ chord, strings }: { chord: ChordSymbol; strings: number[] 
         }}
         onBlur={() => setText(null)}
       />
+    </div>
+  )
+}
+
+/** Up to five links to the recording: one box per link, and an empty one to add another. */
+function LinksField({ links, onChange }: { links: string[]; onChange: (links: string[]) => void }) {
+  const boxes = links.length < 5 ? [...links, ''] : links
+  return (
+    <div>
+      <span className="label">Where to hear it (optional)</span>
+      <div className="flex flex-col gap-2">
+        {boxes.map((l, i) => {
+          const bad = l.trim() !== '' && !isWebLink(l.trim())
+          return (
+            <div key={i}>
+              <input
+                className={clsx('field', bad && 'ring-2 ring-chord')}
+                type="url"
+                inputMode="url"
+                aria-label={`Link ${i + 1} to the recording`}
+                aria-invalid={bad || undefined}
+                placeholder={i === 0 ? 'A YouTube, Bandcamp, SoundCloud or Spotify link' : 'Another link'}
+                value={l}
+                onChange={(e) => {
+                  const next = [...boxes]
+                  next[i] = e.target.value
+                  // Clearing a box removes that link; there's always an empty box to add one.
+                  onChange(next.filter((v) => v !== ''))
+                }}
+              />
+              {bad && <p className="mt-1 text-sm font-bold text-chord">Links start with https://</p>}
+            </div>
+          )
+        })}
+      </div>
     </div>
   )
 }

@@ -91,6 +91,7 @@ type Sheet struct {
 	Search       interface{}
 	Voicings     []byte
 	Draft        bool
+	Links        []string
 }
 
 type SheetStat struct {

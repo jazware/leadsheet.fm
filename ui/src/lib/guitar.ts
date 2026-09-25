@@ -204,7 +204,8 @@ export function shapesFor(chord: Chord, strings: number[] = STANDARD_STRINGS): V
     searchCache.set(key, out)
     return out
   }
-  const standard = isStandardGuitar(strings) && !isSlash(chord)
+  const standardStrings = isStandardGuitar(strings)
+  const standard = standardStrings && !isSlash(chord)
   const head = standard ? standardVoicings(chord) : voicings(chord, strings).slice(0, 1)
   const seen = new Set(head.map((v) => v.frets.join(',')))
   let searched = searchCache.get(`std|${chord.root}:${chord.quality}`)
@@ -216,7 +217,7 @@ export function shapesFor(chord: Chord, strings: number[] = STANDARD_STRINGS): V
   const chosen = [...head]
   for (const v of pool) {
     if (chosen.length >= MAX_SHAPES) break
-    if (seen.has(v.frets.join(',')) || !sensible(v)) continue
+    if (seen.has(v.frets.join(',')) || !sensible(v, standardStrings)) continue
     // Not just a chosen shape with strings left out.
     if (chosen.some((u) => v.frets.every((f, i) => f === null || f === u.frets[i]))) continue
     // At most two shapes around any one spot on the neck.
@@ -263,16 +264,21 @@ function standardVoicings(chord: Chord): Voicing[] {
 }
 
 /**
- * A shape worth offering: the hand stays within four frets, and up the
- * neck the only open string is a root in the bass (no "open chord plus a
- * note at fret 7" oddities).
+ * A shape worth offering: the hand stays within four frets, and in
+ * standard tuning, the top strings ring (at most one muted) and open
+ * strings only in first position (an open string
+ * under fingers at the seventh fret is a shape nobody reaches for). Open
+ * tunings keep them: drones under high frets are how those are played.
  */
-function sensible(v: Voicing): boolean {
+function sensible(v: Voicing, standard: boolean): boolean {
   const fretted = v.frets.filter((f): f is number => f !== null && f > 0)
   if (!fretted.length) return true
   const hi = Math.max(...fretted)
   if (hi - Math.min(...fretted) > 3) return false
+  // Strummed chords ring the top strings: at most one left out.
+  if (standard && v.frets[v.frets.length - 1] === null && v.frets[v.frets.length - 2] === null) return false
   if (hi < 5) return true
+  if (standard) return !v.frets.includes(0)
   const first = v.frets.findIndex((f) => f !== null)
   return v.frets.every((f, i) => f !== 0 || i === first)
 }
@@ -482,7 +488,8 @@ function judge(
 
   const maxFret = fretted.length ? Math.max(...fretted.map((s) => frets[s]!)) : 0
   const score =
-    minFret * 0.6 + fingers * 0.5 + (barre ? 1.5 : 0) - opens * 0.3 - sounding.length * 0.4
+    // Fuller chords win ties: x20003 over x2000x for G/B.
+    minFret * 0.6 + fingers * 0.5 + (barre ? 1.5 : 0) - opens * 0.3 - sounding.length * 0.6
   // First position without a stretch counts as an open chord.
   const open = !barre && maxFret <= 4 && maxFret - minFret <= 2
   return { v: { frets: [...frets], barre, open }, score }

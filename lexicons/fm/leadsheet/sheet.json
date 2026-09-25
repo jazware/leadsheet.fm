@@ -104,6 +104,16 @@
             "maxGraphemes": 3000,
             "description": "Author's notes: strumming pattern, how the intro is played, etc."
           },
+          "links": {
+            "type": "array",
+            "maxLength": 5,
+            "items": {
+              "type": "string",
+              "format": "uri",
+              "maxLength": 2000
+            },
+            "description": "Where to hear the recording this sheet follows: YouTube, Bandcamp, SoundCloud, a streaming service. http(s) URLs."
+          },
           "tags": {
             "type": "array",
             "maxLength": 10,

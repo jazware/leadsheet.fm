@@ -49,6 +49,17 @@ root, fifth and octave. Playing sounds like the instrument: a softer
 pluck for nylon ukulele strings, and a bass line (root, root-root, fifth,
 octave) instead of a strum.
 
+## Links
+
+A sheet's optional `links` (up to five) say where to hear the recording it
+follows; the sheet page shows them as "Listen on YouTube / Bandcamp / …"
+(`ui/src/lib/links.ts` names the service). Only http(s) links are
+accepted when saving, indexed, or shown, whoever wrote the record. YouTube,
+Spotify and SoundCloud links also play in place (`embedFor`; YouTube via
+youtube-nocookie.com), with the player loaded only when pressed so
+reading a sheet doesn't contact those sites. Bandcamp's player needs an
+id that isn't in its URLs, so it's a link.
+
 ## Drafts
 
 A sheet record with `draft: true` is unpublished. It's in the author's

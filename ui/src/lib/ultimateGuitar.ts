@@ -138,5 +138,6 @@ export function importToSheet(p: UGImport): SheetInput {
     description: credit,
     tags: [],
     voicings: [],
+    links: [],
   }
 }

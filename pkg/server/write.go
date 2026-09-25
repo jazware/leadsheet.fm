@@ -3,6 +3,7 @@ package server
 import (
 	"context"
 	"errors"
+	"fmt"
 	"net/http"
 	"strings"
 
@@ -31,6 +32,7 @@ type sheetInput struct {
 	Description string             `json:"description"`
 	Tags        []string           `json:"tags"`
 	Voicings    []records.Voicing  `json:"voicings"`
+	Links       []string           `json:"links"`
 	Draft       bool               `json:"draft"`
 	ForkOf      *records.StrongRef `json:"forkOf"`
 }
@@ -64,6 +66,13 @@ func (in *sheetInput) record(createdAt string) *records.Sheet {
 			rec.Tags = append(rec.Tags, t)
 		}
 	}
+	seenLink := map[string]bool{}
+	for _, l := range in.Links {
+		if l = strings.TrimSpace(l); l != "" && !seenLink[l] {
+			seenLink[l] = true
+			rec.Links = append(rec.Links, l)
+		}
+	}
 	// One shape per chord (the first wins), only for chords that are named.
 	seen := map[string]bool{}
 	for _, v := range in.Voicings {
@@ -81,6 +90,14 @@ func validateSheet(rec *records.Sheet) error {
 	}
 	if strings.TrimSpace(rec.Content) == "" {
 		return echo.NewHTTPError(http.StatusBadRequest, "the sheet is empty")
+	}
+	for _, l := range rec.Links {
+		if !records.WebLink(l) {
+			return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("%q isn't a web link: links start with https://", l))
+		}
+	}
+	if len(rec.Links) > 5 {
+		return echo.NewHTTPError(http.StatusBadRequest, "at most 5 links")
 	}
 	if err := records.Validate(records.NSIDSheet, rec); err != nil {
 		return echo.NewHTTPError(http.StatusBadRequest, err.Error())

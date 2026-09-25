@@ -48,6 +48,8 @@ export interface Sheet extends SheetSummary {
   content: string
   description: string
   voicings: SheetVoicing[]
+  /** Where to hear the recording (http(s) only). */
+  links: string[]
 }
 
 /**
@@ -124,6 +126,7 @@ export interface SheetInput {
   description: string
   tags: string[]
   voicings: SheetVoicing[]
+  links: string[]
   /** Save without publishing. */
   draft?: boolean
   forkOf?: { uri: string; cid: string }
@@ -144,6 +147,7 @@ export function sheetInput(s: Sheet): SheetInput {
     description: s.description,
     tags: s.tags,
     voicings: s.voicings ?? [],
+    links: s.links ?? [],
     draft: s.draft,
   }
 }
@@ -186,8 +190,8 @@ export const api = {
     request<{ redirect: string }>('POST', '/login', { identifier, returnTo }),
   logout: () => request<void>('POST', '/logout'),
 
-  listSheets: (sort: 'recent' | 'top', limit = 30) =>
-    request<{ sheets: SheetSummary[] }>('GET', `/sheets?sort=${sort}&limit=${limit}`),
+  listSheets: (sort: 'recent' | 'top', limit = 30, offset = 0) =>
+    request<{ sheets: SheetSummary[] }>('GET', `/sheets?sort=${sort}&limit=${limit}&offset=${offset}`),
   sheet: (actor: string, rkey: string) => request<SheetPage>('GET', `/sheets/${enc(actor)}/${enc(rkey)}`),
   createSheet: (input: SheetInput) =>
     request<{ uri: string; did: string; rkey: string }>('POST', '/sheets', input),

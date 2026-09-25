@@ -48,6 +48,17 @@ func TestSheetsRatingsForks(t *testing.T) {
 	if got, err := st.GetSheet(ctx, SheetURI("did:plc:b", "3"), ""); err != nil || string(got.Voicings) != `[]` {
 		t.Fatalf("no voicings = %s, %v", got.Voicings, err)
 	}
+	// Links: only web links make it into the index, whoever wrote the record.
+	linked := sheet("Linked", "Oasis", "[C]la", "2026-01-03T00:00:00Z")
+	linked.Links = []string{"https://www.youtube.com/watch?v=abc", "javascript:alert(1)", "https://oasis.bandcamp.com/track/x"}
+	must(st.UpsertSheet(ctx, "did:plc:b", "10", "cid10", linked))
+	if got, err := st.GetSheet(ctx, SheetURI("did:plc:b", "10"), ""); err != nil || len(got.Links) != 2 || got.Links[1] != "https://oasis.bandcamp.com/track/x" {
+		t.Fatalf("links = %v, %v", got.Links, err)
+	}
+	if got, _ := st.GetSheet(ctx, SheetURI("did:plc:b", "3"), ""); got.Links == nil || len(got.Links) != 0 {
+		t.Fatalf("no links = %#v", got.Links)
+	}
+	must(st.DeleteSheet(ctx, SheetURI("did:plc:b", "10")))
 	must(st.DeleteSheet(ctx, SheetURI("did:plc:b", "9")))
 
 	// A draft: its author sees it; nobody else, nor any list, search or count.

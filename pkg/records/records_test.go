@@ -101,3 +101,19 @@ func TestChordNames(t *testing.T) {
 		t.Fatalf("ChordNames = %v, want %v", got, want)
 	}
 }
+
+func TestWebLink(t *testing.T) {
+	for link, want := range map[string]bool{
+		"https://www.youtube.com/watch?v=abc":        true,
+		"http://example.bandcamp.com/track/a-song":   true,
+		"javascript:alert(1)":                        false,
+		"data:text/html,hi":                          false,
+		"https://":                                   false,
+		"youtube.com/watch?v=abc":                    false,
+		"  https://soundcloud.com/someone/some-song": false, // callers trim first
+	} {
+		if got := WebLink(link); got != want {
+			t.Errorf("WebLink(%q) = %v", link, got)
+		}
+	}
+}

@@ -1,4 +1,4 @@
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { useMutation, useQuery, useQueryClient, useInfiniteQuery } from '@tanstack/react-query'
 import { api, type SheetPage } from '@/lib/api'
 
 export const useSession = () =>
@@ -6,8 +6,18 @@ export const useSession = () =>
 
 export const useViewer = () => useSession().data?.viewer ?? null
 
+/** A page of the front page's lists. */
+export const SHEETS_PAGE = 20
+
+/** The newest or best-rated sheets, a page at a time ("Show more"). */
 export const useSheets = (sort: 'recent' | 'top') =>
-  useQuery({ queryKey: ['sheets', sort], queryFn: () => api.listSheets(sort) })
+  useInfiniteQuery({
+    queryKey: ['sheets', sort],
+    queryFn: ({ pageParam }) => api.listSheets(sort, SHEETS_PAGE, pageParam),
+    initialPageParam: 0,
+    // A full page means there may be more.
+    getNextPageParam: (last, pages) => (last.sheets.length === SHEETS_PAGE ? pages.length * SHEETS_PAGE : undefined),
+  })
 
 export const useSheet = (actor: string, rkey: string) =>
   useQuery({ queryKey: ['sheet', actor, rkey], queryFn: () => api.sheet(actor, rkey) })

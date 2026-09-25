@@ -2,9 +2,10 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import { clsx } from 'clsx'
 import { useQueryClient } from '@tanstack/react-query'
-import { ArrowLeft, Bookmark, GitFork, Maximize2, Mic, MicOff, Minus, Pause, Pencil, Play, Plus, Printer, Square, Type, Volume2, X } from 'lucide-react'
+import { ArrowLeft, Bookmark, ExternalLink, GitFork, Maximize2, Mic, MicOff, Minus, Pause, Pencil, Play, Plus, Printer, Square, Type, Volume2, X } from 'lucide-react'
 import { api, KIND_LABEL, sheetInput, sheetPath, type SheetPage as SheetPageData } from '@/lib/api'
 import { chordsIn, parseChordPro, type Segment } from '@/lib/chordpro'
+import { embedFor, isWebLink, linkLabel } from '@/lib/links'
 import { keyText, keyUsesFlats, mod12, noteName, parseKey, pretty, simplifyQuality, type Quality } from '@/lib/music'
 import { getTuning, instrumentOf, isStandardShapes, shapeStrings } from '@/lib/tunings'
 import { rememberSheet } from '@/lib/recent'
@@ -358,6 +359,65 @@ function DraftBanner({ page }: { page: SheetPageData }) {
   )
 }
 
+/**
+ * Where to hear the recording. YouTube, Spotify and SoundCloud links get a
+ * play button that opens their player here, loaded only when pressed (so
+ * just reading a sheet doesn't call those sites); the rest open in a tab.
+ */
+function ListenLinks({ links }: { links: string[] }) {
+  const web = links.filter(isWebLink)
+  const [playing, setPlaying] = useState<string | null>(null)
+  if (!web.length) return null
+  const embed = playing ? embedFor(playing) : null
+  return (
+    <div className="no-print mt-2 flex flex-col gap-2">
+      <p className="flex flex-wrap items-center gap-2 text-sm font-bold">
+        <span className="text-ink-soft">Listen on</span>
+        {web.map((l) =>
+          embedFor(l) ? (
+            <span key={l} className="pill inline-flex items-center gap-1.5 pr-1.5">
+              <button
+                type="button"
+                className="inline-flex items-center gap-1 hover:text-chord"
+                aria-pressed={playing === l}
+                onClick={() => setPlaying(playing === l ? null : l)}
+                title={playing === l ? 'Close the player' : 'Play it here'}
+              >
+                {playing === l ? <X className="h-3 w-3" aria-hidden /> : <Play className="h-3 w-3 fill-current" aria-hidden />}
+                {linkLabel(l)}
+              </button>
+              <a href={l} target="_blank" rel="noopener noreferrer nofollow" className="text-ink-soft hover:text-chord" aria-label={`Open on ${linkLabel(l)}`} title={`Open on ${linkLabel(l)}`}>
+                <ExternalLink className="h-3 w-3" aria-hidden />
+              </a>
+            </span>
+          ) : (
+            <a key={l} href={l} target="_blank" rel="noopener noreferrer nofollow" className="pill inline-flex items-center gap-1 hover:text-chord">
+              {linkLabel(l)}
+              <ExternalLink className="h-3 w-3" aria-hidden />
+            </a>
+          ),
+        )}
+      </p>
+      {embed && (
+        <div
+          className={clsx('w-full max-w-[40rem] overflow-hidden rounded-2xl bg-surface', !embed.height && 'aspect-video')}
+          style={embed.height ? { height: embed.height } : undefined}
+        >
+          <iframe
+            key={embed.src}
+            src={embed.src}
+            title={embed.title}
+            className="h-full w-full border-0"
+            allow="autoplay; encrypted-media; clipboard-write; picture-in-picture; fullscreen"
+            allowFullScreen
+            referrerPolicy="strict-origin-when-cross-origin"
+          />
+        </div>
+      )}
+    </div>
+  )
+}
+
 function TitleBlock({ page, actor }: { page: SheetPageData; actor: string }) {
   const { sheet, viewer: state, versions } = page
   const viewer = useViewer()
@@ -385,6 +445,7 @@ function TitleBlock({ page, actor }: { page: SheetPageData; actor: string }) {
           </Link>
           {facts.length > 0 && <>, {facts.join(', ')}</>}
         </p>
+        <ListenLinks links={sheet.links ?? []} />
         <p className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1 text-sm font-semibold text-ink-soft">
           {versions.length > 1 && (
             <span>

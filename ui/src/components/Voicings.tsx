@@ -87,13 +87,21 @@ export function SheetShapesProvider({ value, children }: { value: SheetShapes | 
 }
 
 /** A chord's shapes, the sheet's own first when it has one. */
-function shapesList(chord: ChordLike, strings: number[], own: Frets | undefined): Voicing[] {
+/**
+ * A chord's shapes in a fixed order: the ones we know, with the sheet's
+ * own first only if it isn't one of them. (Moving it to the front would
+ * reshuffle the list, and the numbering, every time it changed.)
+ */
+export function shapesList(chord: ChordLike, strings: number[], own: Frets | undefined): Voicing[] {
   const generated = chord.quality ? shapesFor({ root: chord.root, quality: chord.quality, bass: chord.bass }, strings) : []
   if (!own) return generated
   const ownKey = fretsKey(own)
-  const mine = generated.find((v) => fretsKey(v.frets) === ownKey)
-  return [mine ?? voicingFromFrets(own), ...generated.filter((v) => fretsKey(v.frets) !== ownKey)]
+  return generated.some((v) => fretsKey(v.frets) === ownKey) ? generated : [voicingFromFrets(own), ...generated]
 }
+
+/** Which shape shows by default: the sheet's own, else the first. */
+export const defaultIndex = (shapes: Voicing[], own: Frets | undefined) =>
+  own ? Math.max(0, shapes.findIndex((v) => fretsKey(v.frets) === fretsKey(own))) : 0
 
 /**
  * The shape a chord box shows for this chord: the reader's pick, else the
@@ -109,7 +117,7 @@ export function resolveVoicing(
   const own = sheet?.shapes.get(chordKey(chord))
   const shapes = shapesList(chord, strings, own)
   const pick = sheet?.edit ? undefined : picks[pickKey(strings, chord, own ? sheet!.scope : undefined)]
-  return shapes.find((v) => pick !== undefined && fretsKey(v.frets) === pick) ?? shapes[0]
+  return shapes.find((v) => pick !== undefined && fretsKey(v.frets) === pick) ?? shapes[defaultIndex(shapes, own)]
 }
 
 /** The reader's picks (see VoicingProvider). */
@@ -137,7 +145,8 @@ export function useVoicing(chord: ChordLike | null, strings: number[]) {
 
   const storeKey = chord ? pickKey(strings, chord, own ? sheet!.scope : undefined) : ''
   const picked = sheet?.edit ? -1 : shapes.findIndex((v) => fretsKey(v.frets) === picks[storeKey])
-  const index = picked >= 0 ? picked : 0
+  const fallback = defaultIndex(shapes, own)
+  const index = picked >= 0 ? picked : fallback
   const step = (d: number) => {
     if (shapes.length < 2 || !chord) return
     const next = shapes[(index + d + shapes.length) % shapes.length]
@@ -146,10 +155,17 @@ export function useVoicing(chord: ChordLike | null, strings: number[]) {
       const generated0 = quality ? shapesFor({ root, quality, bass }, strings)[0] : undefined
       sheet.edit(key, generated0 && fretsKey(next.frets) === fretsKey(generated0.frets) ? null : next.frets)
     } else {
-      pick(storeKey, next === shapes[0] ? null : fretsKey(next.frets))
+      // Back to the default: nothing to remember.
+      pick(storeKey, next === shapes[fallback] ? null : fretsKey(next.frets))
     }
   }
-  return { shapes, index, voicing: shapes[index] as Voicing | undefined, step, own: !!own && index === 0 }
+  return {
+    shapes,
+    index,
+    voicing: shapes[index] as Voicing | undefined,
+    step,
+    own: !!own && fretsKey(shapes[index]?.frets ?? []) === ownKey,
+  }
 }
 
 /**
