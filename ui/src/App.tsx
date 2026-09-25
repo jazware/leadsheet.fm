@@ -12,7 +12,7 @@ import { Avatar } from '@/components/Author'
 import { Logo } from '@/components/Logo'
 import { Footer } from '@/components/Footer'
 import { VoicingProvider } from '@/components/Voicings'
-import { SearchField } from '@/components/SearchField'
+import { SearchField, useSearchShortcut } from '@/components/SearchField'
 import { HomePage } from '@/pages/HomePage'
 import { SearchPage } from '@/pages/SearchPage'
 import { SheetPage } from '@/pages/SheetPage'
@@ -23,6 +23,7 @@ import { ProfilePage } from '@/pages/ProfilePage'
 import { ImportPage } from '@/pages/ImportPage'
 
 export default function App() {
+  useSearchShortcut()
   const [login, setLogin] = useState<{ open: boolean; reason?: string }>({ open: false })
   const openLogin = useCallback((reason?: string) => setLogin({ open: true, reason }), [])
   const [params, setParams] = useSearchParams()
@@ -119,6 +120,7 @@ function Header({ className }: { className?: string }) {
       <Logo />
       {!onHome && !onSearch && (
         <SearchField
+          suggest
           className="order-last basis-full sm:order-none sm:flex-1 sm:basis-auto"
           value={q}
           onChange={setQ}

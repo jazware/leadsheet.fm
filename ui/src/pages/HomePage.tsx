@@ -19,6 +19,7 @@ export function HomePage() {
   return (
     <div className="flex flex-col gap-7 pt-1">
       <SearchField
+        suggest
         size="lg"
         value={q}
         onChange={setQ}

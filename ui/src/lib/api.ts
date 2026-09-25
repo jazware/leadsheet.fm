@@ -199,7 +199,8 @@ export const api = {
   favorite: (did: string, rkey: string, favorite: boolean) =>
     request<{ stats: Stats; viewer: ViewerState }>('PUT', `/sheets/${enc(did)}/${enc(rkey)}/favorite`, { favorite }),
 
-  search: (q: string) => request<{ songs: SongResult[] }>('GET', `/search?q=${enc(q)}`),
+  search: (q: string, limit?: number) =>
+    request<{ songs: SongResult[] }>('GET', `/search?q=${enc(q)}${limit ? `&limit=${limit}` : ''}`),
   song: (artist: string, title: string) => request<Song>('GET', `/songs/${enc(artist)}/${enc(title)}`),
   artist: (artist: string) => request<Artist>('GET', `/artists/${enc(artist)}`),
   profile: (actor: string) => request<Profile>('GET', `/profiles/${enc(actor)}`),

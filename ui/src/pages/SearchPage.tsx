@@ -1,9 +1,10 @@
 import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { ArrowLeft } from 'lucide-react'
-import { KIND_LABEL, sheetPath, type SongResult } from '@/lib/api'
+import { KIND_LABEL, type SongResult } from '@/lib/api'
 import { useSearch } from '@/hooks/queries'
 import { StarsShown } from '@/components/Stars'
-import { SearchField } from '@/components/SearchField'
+import { SearchField, songPath } from '@/components/SearchField'
+import { Snippet } from '@/components/Snippet'
 import { useTitle } from '@/hooks/useTitle'
 
 export function SearchPage() {
@@ -54,20 +55,8 @@ export function SearchPage() {
   )
 }
 
-/** Renders a search snippet, marking the matched words. */
-function Snippet({ text }: { text: string }) {
-  const parts = text.split(/(\u0002[^\u0003]*\u0003)/)
-  return (
-    <span className="line-clamp-2 font-semibold italic">
-      “
-      {parts.map((p, i) => (p.startsWith('\u0002') ? <mark key={i}>{p.slice(1, -1)}</mark> : <span key={i}>{p.replace(/\n+/g, ' / ')}</span>))}
-      ”
-    </span>
-  )
-}
-
 export function SongRow({ song, showArtist = true }: { song: SongResult; showArtist?: boolean }) {
-  const to = song.versionCount === 1 ? sheetPath(song.top) : `/songs/${song.artistSlug}/${song.titleSlug}`
+  const to = songPath(song)
   const kinds = song.kinds.map((k) => (KIND_LABEL[k] ?? k).toLowerCase()).join(', ')
   return (
     <li>

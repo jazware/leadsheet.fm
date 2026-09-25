@@ -98,11 +98,16 @@ func (s *Server) handleGetSheet(c echo.Context) error {
 		return err
 	}
 	resp["forks"] = forks
+	// Other versions of the song. A draft of a song nobody has published
+	// yet has none (the song itself isn't listed).
+	resp["versions"] = []store.SongVersion{}
 	song, err := s.store.GetSong(ctx, sheet.ArtistSlug, sheet.TitleSlug)
-	if err != nil {
+	if err != nil && !errors.Is(err, store.ErrNotFound) {
 		return err
 	}
-	resp["versions"] = song.Versions
+	if song != nil {
+		resp["versions"] = song.Versions
+	}
 	return c.JSON(http.StatusOK, resp)
 }
 
