@@ -95,7 +95,8 @@ export function SearchField({
           aria-label="Search songs, artists, lyrics"
           placeholder="Song, artist or a lyric"
           className={clsx(
-            'min-w-0 flex-1 bg-transparent font-bold text-ink placeholder:font-semibold placeholder:text-ink-faint focus:outline-none',
+            // The pill around it shows focus; the global focus ring would draw a second one.
+            'min-w-0 flex-1 bg-transparent font-bold text-ink placeholder:font-semibold placeholder:text-ink-faint focus:outline-none focus-visible:ring-0 focus-visible:ring-offset-0',
             size === 'lg' ? 'text-[1.1rem]' : 'text-[0.95rem]',
           )}
           value={value}
