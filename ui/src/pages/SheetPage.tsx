@@ -345,22 +345,17 @@ function useFitWindow(ref: React.RefObject<HTMLElement | null>) {
   useEffect(() => {
     const el = ref.current
     if (!el) return
-    let frame = 0
+    // (Scroll events come at most once a frame already.)
     const fit = () => {
-      frame = 0
       const top = Math.max(16, el.getBoundingClientRect().top)
       el.style.maxHeight = `${window.innerHeight - top - 16}px`
     }
-    const queue = () => {
-      if (!frame) frame = requestAnimationFrame(fit)
-    }
     fit()
-    window.addEventListener('scroll', queue, { passive: true })
-    window.addEventListener('resize', queue)
+    window.addEventListener('scroll', fit, { passive: true })
+    window.addEventListener('resize', fit)
     return () => {
-      cancelAnimationFrame(frame)
-      window.removeEventListener('scroll', queue)
-      window.removeEventListener('resize', queue)
+      window.removeEventListener('scroll', fit)
+      window.removeEventListener('resize', fit)
     }
   }, [ref])
 }
