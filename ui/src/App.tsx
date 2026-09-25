@@ -34,7 +34,8 @@ export default function App() {
   return (
     <LoginContext.Provider value={openLogin}>
       <VoicingProvider>
-        <div className="mx-auto min-h-screen max-w-6xl px-5 pb-28 sm:px-8">
+        {/* data-page: what autoscroll slides on phones (see glide in SheetPage). */}
+        <div data-page className="mx-auto min-h-screen max-w-6xl px-5 pb-28 sm:px-8">
           <Header className={clsx(onSheet && 'hidden lg:flex')} />
           {loginError && (
             <div className="no-print mb-6 flex items-start justify-between gap-4 rounded-2xl bg-glow px-4 py-3 text-sm font-bold text-glow-ink">

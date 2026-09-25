@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
+import { createPortal } from 'react-dom'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import { clsx } from 'clsx'
 import { useQueryClient } from '@tanstack/react-query'
@@ -768,7 +769,9 @@ function BottomBar({ c }: { c: Controls }) {
       </div>
     </div>
   )
-  return (
+  // Outside the page (a portal): on phones, autoscroll slides the page with a
+  // transform, which would take a fixed bar inside it along too.
+  return createPortal(
     <div className="no-print fixed inset-x-3 bottom-[max(0.75rem,env(safe-area-inset-bottom))] z-30 mx-auto max-w-md lg:hidden">
       {c.play.state.status !== 'off' && !more && (
         <div className="mb-2 flex items-center justify-between gap-3 rounded-[20px] border border-rule bg-surface px-4 py-2.5 text-sm font-bold shadow-float" role="status">
@@ -829,7 +832,8 @@ function BottomBar({ c }: { c: Controls }) {
           <Type className="h-5 w-5" aria-hidden />
         </button>
       </div>
-    </div>
+    </div>,
+    document.body,
   )
 }
 
@@ -948,9 +952,26 @@ function useAutoScroll(
   end.current = onEnd
   useEffect(() => {
     if (!running) return
+    const pxPerSecond = speed * 7
+    // Phones, scrolling the page: glide it with a transform instead.
+    // WebKit on iPhone moves a script-scrolled page in uneven steps however
+    // it's done; a transform animation runs on the compositor and doesn't.
+    const page = document.querySelector<HTMLElement>('[data-page]')
+    // (Phone widths only: wider layouts have a sticky sidebar the transform
+    // would carry off. localStorage leadsheet:glide = 1 forces it, for testing.)
+    const phone = window.matchMedia('(pointer: coarse) and (max-width: 1023px)').matches
+    const forced = (() => {
+      try {
+        return localStorage.getItem('leadsheet:glide') === '1'
+      } catch {
+        return false
+      }
+    })()
+    if (!target && page && (phone || forced) && 'animate' in page) {
+      return glide(page, pxPerSecond, () => end.current())
+    }
     // Scroll in device pixels, tracking the position exactly. Whole CSS
-    // pixels at ~20 px/s meant a visible jump every few frames on a phone,
-    // where a CSS pixel is 2 or 3 screen pixels.
+    // pixels at ~20 px/s meant a visible jump every few frames.
     const dpr = window.devicePixelRatio || 1
     const el = target?.current ?? null
     const get = () => (el ? el.scrollTop : window.scrollY)
@@ -964,7 +985,7 @@ function useAutoScroll(
     const tick = (now: number) => {
       // Someone scrolled by hand: carry on from where they left it.
       if (Math.abs(get() - wrote) > 2) pos = get()
-      pos += ((now - last) / 1000) * speed * 7
+      pos += ((now - last) / 1000) * pxPerSecond
       last = now
       const y = Math.round(pos * dpr) / dpr
       if (y !== wrote) {
@@ -977,6 +998,71 @@ function useAutoScroll(
     frame = requestAnimationFrame(tick)
     return () => cancelAnimationFrame(frame)
   }, [running, speed, target])
+}
+
+/**
+ * Autoscroll on a phone: the page stays put and `page` slides up under it
+ * as a linear transform animation, from here to the bottom. Touching the
+ * screen hands it back as a real scroll position (same frame, no jump) and
+ * it picks up again from wherever the finger leaves it. Returns a stop
+ * function that does the same handover.
+ */
+function glide(page: HTMLElement, pxPerSecond: number, onEnd: () => void): () => void {
+  let anim: Animation | null = null
+  let from = 0 // scroll position the current glide started at
+  let resume = 0
+
+  const offset = () => {
+    if (!anim) return 0
+    const t = Number(anim.currentTime ?? 0) / 1000
+    return Math.min(t * pxPerSecond, Number(anim.effect?.getTiming().duration ?? 0) / 1000 * pxPerSecond)
+  }
+  // Swap the transform for the scroll position it stood for.
+  const settle = () => {
+    if (!anim) return
+    const y = from + offset()
+    anim.cancel()
+    anim = null
+    page.style.willChange = ''
+    window.scrollTo(0, y)
+  }
+  const start = () => {
+    clearTimeout(resume)
+    from = window.scrollY
+    const distance = document.documentElement.scrollHeight - window.innerHeight - from
+    if (distance <= 1) return onEnd()
+    page.style.willChange = 'transform'
+    anim = page.animate([{ transform: 'translate3d(0, 0, 0)' }, { transform: `translate3d(0, ${-distance}px, 0)` }], {
+      duration: (distance / pxPerSecond) * 1000,
+      easing: 'linear',
+      fill: 'forwards',
+    })
+    anim.onfinish = () => {
+      settle()
+      onEnd()
+    }
+  }
+  // A finger on the screen takes over; lifting it hands back.
+  const grab = () => {
+    clearTimeout(resume)
+    settle()
+  }
+  const release = () => {
+    clearTimeout(resume)
+    // Let a flick's momentum finish before gliding on.
+    resume = window.setTimeout(start, 600)
+  }
+  window.addEventListener('touchstart', grab, { passive: true })
+  window.addEventListener('touchend', release, { passive: true })
+  window.addEventListener('touchcancel', release, { passive: true })
+  start()
+  return () => {
+    clearTimeout(resume)
+    window.removeEventListener('touchstart', grab)
+    window.removeEventListener('touchend', release)
+    window.removeEventListener('touchcancel', release)
+    settle()
+  }
 }
 
 /** Keeps the screen on while playing (where the browser allows it). */
