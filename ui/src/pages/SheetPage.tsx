@@ -8,7 +8,7 @@ import { api, KIND_LABEL, sheetInput, sheetPath, type SheetPage as SheetPageData
 import { chordsIn, parseChordPro, type Segment } from '@/lib/chordpro'
 import { embedFor, isWebLink, linkLabel } from '@/lib/links'
 import { keyText, keyUsesFlats, mod12, noteName, parseKey, pretty, simplifyQuality, type Quality } from '@/lib/music'
-import { getTuning, instrumentOf, isStandardShapes, shapeStrings, tuningsFor, type Instrument } from '@/lib/tunings'
+import { getTuning, instrumentOf, shapeStrings, tuningsFor, type Instrument } from '@/lib/tunings'
 import { rememberSheet } from '@/lib/recent'
 import { useSheet, useSheetActions, useViewer } from '@/hooks/queries'
 import { usePref } from '@/hooks/usePref'
@@ -293,7 +293,7 @@ function SheetScreen({ page, actor }: { page: SheetPageData; actor: string }) {
                   label={
                     <>
                       {c.instrument !== c.written ? `${INSTRUMENT_NAME[c.instrument]} shapes` : 'Shapes'}
-                      {tuning && !isStandardShapes(tuning) && <>, {tuning.name}</>}
+                      {tuning && tuning.id !== 'standard' && <>, {tuning.name}</>}
                     </>
                   }
                 >
