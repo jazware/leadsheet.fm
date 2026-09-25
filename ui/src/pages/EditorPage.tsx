@@ -272,9 +272,14 @@ function Editor({
         {imported && (
           <p className="mt-2 rounded-2xl bg-glow px-4 py-2.5 font-bold text-glow-ink">
             Imported from{' '}
-            <a className="underline" href={imported.url} target="_blank" rel="noreferrer">
-              Ultimate Guitar
-            </a>
+            {/* The import comes from the page's own link, so its URL is anyone's: only link a web page. */}
+            {isWebLink(imported.url) ? (
+              <a className="underline" href={imported.url} target="_blank" rel="noreferrer">
+                Ultimate Guitar
+              </a>
+            ) : (
+              'Ultimate Guitar'
+            )}
             {imported.author && <> (transcribed by {imported.author})</>}. Check the chords line up, then publish. Nothing
             is shared until you do.
           </p>

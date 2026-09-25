@@ -66,8 +66,11 @@ func (r *ProfileResolver) Resolve(ctx context.Context, dids ...string) {
 			Avatar      string `json:"avatar"`
 		} `json:"profiles"`
 	}
+	// On failure, names and avatars stay as they were rather than blanking.
+	fetched := true
 	if err := r.bsky.Get(ctx, "app.bsky.actor.getProfiles", map[string]any{"actors": dids}, &out); err != nil {
 		r.logger.Warn("fetching bluesky profiles", "error", err)
+		fetched = false
 	}
 	bsky := map[string]store.Author{}
 	for _, p := range out.Profiles {
@@ -75,24 +78,29 @@ func (r *ProfileResolver) Resolve(ctx context.Context, dids ...string) {
 	}
 
 	for _, did := range dids {
-		a := bsky[did]
-		a.DID = did
+		// (No Bluesky profile at all is known too: no name or avatar.)
+		p := store.ProfileUpdate{Author: bsky[did], ProfileKnown: fetched}
+		p.DID = did
 		if parsed, err := syntax.ParseDID(did); err == nil {
 			r.dir.Purge(ctx, parsed.AtIdentifier())
-			if ident, err := r.dir.LookupDID(ctx, parsed); err == nil && !ident.Handle.IsInvalidHandle() {
-				a.Handle = ident.Handle.String()
-			} else if err != nil {
+			if ident, err := r.dir.LookupDID(ctx, parsed); err == nil {
+				// An invalid handle is known too: there isn't one to show.
+				p.HandleKnown = true
+				if !ident.Handle.IsInvalidHandle() {
+					p.Handle = ident.Handle.String()
+				}
+			} else {
 				r.logger.Debug("resolving identity", "did", did, "error", err)
 			}
 		}
-		if a.Handle != "" {
+		if p.Handle != "" {
 			metrics.ProfilesResolved.WithLabelValues("ok").Inc()
 		} else {
 			metrics.ProfilesResolved.WithLabelValues("no_handle").Inc()
 		}
-		// Written even on failure so a broken identity isn't retried
-		// every tick; it's retried after profileTTL.
-		if err := r.store.UpsertProfile(ctx, a); err != nil {
+		// Written even on failure (keeping what we had) so a broken
+		// identity isn't retried every tick; it's retried after profileTTL.
+		if err := r.store.UpsertProfile(ctx, p); err != nil {
 			r.logger.Error("saving profile", "did", did, "error", err)
 		}
 	}

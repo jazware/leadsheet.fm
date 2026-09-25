@@ -27,10 +27,19 @@ func (s *Store) GetAuthor(ctx context.Context, actor string) (*Author, error) {
 }
 
 // UpsertProfile records resolved display info for an account.
-func (s *Store) UpsertProfile(ctx context.Context, a Author) error {
+func (s *Store) UpsertProfile(ctx context.Context, p ProfileUpdate) error {
 	return s.q.UpsertProfile(ctx, dbq.UpsertProfileParams{
-		Did: a.DID, Handle: strings.ToLower(a.Handle), DisplayName: a.DisplayName, Avatar: a.Avatar,
+		Did: p.DID, Handle: strings.ToLower(p.Handle), DisplayName: p.DisplayName, Avatar: p.Avatar,
+		KeepHandle: !p.HandleKnown, KeepProfile: !p.ProfileKnown,
 	})
+}
+
+// ProfileUpdate is a freshly resolved profile. A part whose lookup failed
+// (not known) keeps its previous value, so an outage doesn't blank it.
+type ProfileUpdate struct {
+	Author
+	HandleKnown  bool
+	ProfileKnown bool
 }
 
 // MarkProfileStale queues a known account for re-resolution (after an
@@ -39,9 +48,19 @@ func (s *Store) MarkProfileStale(ctx context.Context, did string) error {
 	return s.q.MarkProfileStale(ctx, did)
 }
 
-// SetHidden hides or unhides a known account's records.
+// SetHidden hides or unhides a known account's records, and recounts the
+// sheets its forks count toward (hidden accounts' forks aren't counted).
 func (s *Store) SetHidden(ctx context.Context, did string, hidden bool) error {
-	return s.q.SetHidden(ctx, dbq.SetHiddenParams{Did: did, Hidden: hidden})
+	return s.tx(ctx, func(q *dbq.Queries) error {
+		if err := q.SetHidden(ctx, dbq.SetHiddenParams{Did: did, Hidden: hidden}); err != nil {
+			return err
+		}
+		subjects, err := q.AccountSubjects(ctx, did)
+		if err != nil {
+			return err
+		}
+		return recomputeAll(ctx, q, subjects...)
+	})
 }
 
 // StaleProfiles returns DIDs never resolved or last resolved before cutoff.

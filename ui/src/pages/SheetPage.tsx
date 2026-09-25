@@ -85,7 +85,7 @@ function useSheetControls(page: SheetPageData) {
   // `key` is the key the chords are written in (shapes, relative to the
   // sheet's capo), which is what authors type.
   const key = parseKey(sheet.key)
-  const soundingKey = key && { ...key, tonic: mod12(key.tonic + sheet.capo + transpose) }
+  const soundingKey = key && { ...key, tonic: mod12(key.tonic + sheet.capo - sheetShift + transpose) }
   const shapeKey = key && { ...key, tonic: mod12(key.tonic + shift) }
   const flats =
     accidentals === 'auto'
@@ -100,10 +100,10 @@ function useSheetControls(page: SheetPageData) {
   // written; it works out anything else from the audio.
   const prior = useMemo(
     () => [
-      { offset: sheet.capo + transpose, weight: 1 },
+      { offset: sheet.capo - sheetShift + transpose, weight: 1 },
       { offset: transpose, weight: 0.4 },
     ],
-    [sheet.capo, transpose],
+    [sheet.capo, sheetShift, transpose],
   )
   const play = usePlayAlong(doc, prior)
 

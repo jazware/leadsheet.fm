@@ -38,6 +38,8 @@ export function usePlayAlong(doc: Doc, prior: { offset: number; weight: number }
 
   const start = useCallback(async () => {
     if (!sheet.chords.length) return
+    stopAudio.current?.()
+    stopAudio.current = null
     const id = ++run.current
     // Created inside the tap so browsers let it make sound (well, listen).
     let ctx = new AudioContext({ sampleRate: SR })
@@ -63,61 +65,74 @@ export function usePlayAlong(doc: Doc, prior: { offset: number; weight: number }
       void ctx.close()
       return
     }
-    let source: MediaStreamAudioSourceNode
-    try {
-      source = ctx.createMediaStreamSource(stream)
-    } catch {
-      // Firefox won't connect a mic to a context at another rate: resample ourselves.
-      void ctx.close()
-      ctx = new AudioContext()
-      source = ctx.createMediaStreamSource(stream)
+    // From here the mic is open: stopping, or a failure setting up, must let it go.
+    const closeCtx = () => {
+      if (ctx.state !== 'closed') void ctx.close()
     }
-    await ctx.resume()
-    const resample = resampler(ctx.sampleRate / SR)
-
-    const w = (worker.current ??= new Worker(new URL('./worker.ts', import.meta.url), { type: 'module' }))
-    let last = ''
-    w.onmessage = (e: MessageEvent<FromWorker>) => {
-      const m = e.data
-      if (id !== run.current) return // from a run that's been stopped
-      if (m.type === 'progress') setState({ status: 'loading', fraction: m.fraction })
-      else if (m.type === 'ready') setState({ status: 'listening', now: null, heard: null, silent: true, offset: 0, level: 0 })
-      else if (m.type === 'error') {
-        stopAudio.current?.()
-        stopAudio.current = null
-        setState({ status: 'error', message: `The chord listener stopped: ${m.message}` })
-      } else if (m.type === 'position') {
-        // Only re-render when something visible changes.
-        // (The level only matters to the nearest 10 dB: is anything coming in.)
-        const key = `${m.index}|${m.heard}|${m.silent}|${m.offset}|${Math.round(m.level / 10)}`
-        if (key === last) return
-        last = key
-        setState({ status: 'listening', now: sheet.segments[m.index] ?? null, heard: m.heard, silent: m.silent, offset: m.offset, level: m.level })
-      }
-    }
-    w.postMessage({ type: 'start', chords: sheet.chords, sections: sheet.sections, prior: priorRef.current } satisfies ToWorker)
-
-    await ctx.audioWorklet.addModule(captureUrl)
-    if (id !== run.current) {
-      stream.getTracks().forEach((t) => t.stop())
-      void ctx.close()
-      return
-    }
-    const node = new AudioWorkletNode(ctx, 'leadsheet-capture')
-    node.port.onmessage = (e: MessageEvent<Float32Array>) => {
-      const samples = resample(e.data)
-      w.postMessage({ type: 'audio', samples } satisfies ToWorker, [samples.buffer])
-    }
-    source.connect(node)
-    // Keep the graph pulling audio without playing anything.
-    const mute = ctx.createGain()
-    mute.gain.value = 0
-    node.connect(mute).connect(ctx.destination)
-
     stopAudio.current = () => {
       stream.getTracks().forEach((t) => t.stop())
-      node.port.onmessage = null
-      void ctx.close()
+      closeCtx()
+    }
+    try {
+      let source: MediaStreamAudioSourceNode
+      try {
+        source = ctx.createMediaStreamSource(stream)
+      } catch {
+        // Firefox won't connect a mic to a context at another rate: resample ourselves.
+        closeCtx()
+        ctx = new AudioContext()
+        source = ctx.createMediaStreamSource(stream)
+      }
+      await ctx.resume()
+      if (id !== run.current) return
+      const resample = resampler(ctx.sampleRate / SR)
+
+      const w = (worker.current ??= new Worker(new URL('./worker.ts', import.meta.url), { type: 'module' }))
+      let last = ''
+      w.onmessage = (e: MessageEvent<FromWorker>) => {
+        const m = e.data
+        if (id !== run.current) return // from a run that's been stopped
+        if (m.type === 'progress') setState({ status: 'loading', fraction: m.fraction })
+        else if (m.type === 'ready') setState({ status: 'listening', now: null, heard: null, silent: true, offset: 0, level: 0 })
+        else if (m.type === 'error') {
+          stopAudio.current?.()
+          stopAudio.current = null
+          setState({ status: 'error', message: `The chord listener stopped: ${m.message}` })
+        } else if (m.type === 'position') {
+          // Only re-render when something visible changes.
+          // (The level only matters to the nearest 10 dB: is anything coming in.)
+          const key = `${m.index}|${m.heard}|${m.silent}|${m.offset}|${Math.round(m.level / 10)}`
+          if (key === last) return
+          last = key
+          setState({ status: 'listening', now: sheet.segments[m.index] ?? null, heard: m.heard, silent: m.silent, offset: m.offset, level: m.level })
+        }
+      }
+      w.postMessage({ type: 'start', chords: sheet.chords, sections: sheet.sections, prior: priorRef.current } satisfies ToWorker)
+
+      await ctx.audioWorklet.addModule(captureUrl)
+      if (id !== run.current) return // stopped: stopAudio already let the mic go
+      const node = new AudioWorkletNode(ctx, 'leadsheet-capture')
+      node.port.onmessage = (e: MessageEvent<Float32Array>) => {
+        const samples = resample(e.data)
+        w.postMessage({ type: 'audio', samples } satisfies ToWorker, [samples.buffer])
+      }
+      source.connect(node)
+      // Keep the graph pulling audio without playing anything.
+      const mute = ctx.createGain()
+      mute.gain.value = 0
+      node.connect(mute).connect(ctx.destination)
+
+      stopAudio.current = () => {
+        stream.getTracks().forEach((t) => t.stop())
+        node.port.onmessage = null
+        closeCtx()
+      }
+    } catch (err) {
+      if (id !== run.current) return
+      stopAudio.current?.()
+      stopAudio.current = null
+      worker.current?.postMessage({ type: 'stop' } satisfies ToWorker)
+      setState({ status: 'error', message: `Couldn't start listening: ${err instanceof Error ? err.message : err}` })
     }
   }, [sheet])
 

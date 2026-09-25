@@ -208,7 +208,14 @@ func TestSheetsRatingsForks(t *testing.T) {
 	if _, err := st.GetSheet(ctx, v2, ""); !errors.Is(err, ErrNotFound) {
 		t.Fatalf("hidden sheet: err = %v", err)
 	}
+	// Nor are hidden accounts' forks counted, as they aren't listed.
+	if orig, _ := st.GetSheet(ctx, v1, ""); orig.Stats.ForkCount != 0 {
+		t.Fatalf("fork count with the forker hidden = %d", orig.Stats.ForkCount)
+	}
 	must(st.SetHidden(ctx, "did:plc:b", false))
+	if orig, _ := st.GetSheet(ctx, v1, ""); orig.Stats.ForkCount != 1 {
+		t.Fatalf("fork count with the forker back = %d", orig.Stats.ForkCount)
+	}
 	must(st.PurgeAccount(ctx, "did:plc:b"))
 	orig, _ = st.GetSheet(ctx, v1, "")
 	if orig.Stats.ForkCount != 0 {
@@ -313,5 +320,36 @@ func TestCleanup(t *testing.T) {
 	}
 	if _, err := st.GetWebSession(ctx, tok); !errors.Is(err, ErrNotFound) {
 		t.Fatal("expired web session still there")
+	}
+}
+
+func TestProfileLookupFailuresKeepWhatWeHad(t *testing.T) {
+	ctx := context.Background()
+	st := storetest.New(t)
+	must := func(err error) {
+		t.Helper()
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+	must(st.UpsertSheet(ctx, "did:plc:a", "1", "cid1", sheet("Wonderwall", "Oasis", "[Em7]Today", "2026-01-01T00:00:00Z")))
+	author := func() Author {
+		t.Helper()
+		s, err := st.GetSheet(ctx, SheetURI("did:plc:a", "1"), "")
+		must(err)
+		return s.Author
+	}
+	full := Author{DID: "did:plc:a", Handle: "a.test", DisplayName: "A", Avatar: "https://cdn/a.jpg"}
+	must(st.UpsertProfile(ctx, ProfileUpdate{Author: full, HandleKnown: true, ProfileKnown: true}))
+
+	// Both lookups failed: nothing changes.
+	must(st.UpsertProfile(ctx, ProfileUpdate{Author: Author{DID: "did:plc:a"}}))
+	if got := author(); got != full {
+		t.Fatalf("after failed lookups = %+v", got)
+	}
+	// The profile came back empty (no Bluesky profile) but the handle lookup failed.
+	must(st.UpsertProfile(ctx, ProfileUpdate{Author: Author{DID: "did:plc:a"}, ProfileKnown: true}))
+	if got := author(); got.Handle != "a.test" || got.DisplayName != "" || got.Avatar != "" {
+		t.Fatalf("after an empty profile = %+v", got)
 	}
 }

@@ -67,6 +67,9 @@ func New(cfg Config) *echo.Echo {
 	e.HTTPErrorHandler = jsonErrorHandler(cfg.Logger)
 
 	e.Use(middleware.Recover())
+	// Sheets are at most 100 KB of text (the lexicon's limit); nothing we
+	// take is near 1 MB, so don't read more than that into memory.
+	e.Use(middleware.BodyLimit("1M"))
 	e.Use(metrics.Middleware())
 	e.Use(slogRequestLogger(cfg.Logger))
 	if cfg.DevOrigin != "" {

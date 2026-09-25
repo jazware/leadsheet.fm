@@ -891,7 +891,9 @@ FROM
      FROM (SELECT DISTINCT ON (did) value FROM ratings WHERE subject_uri = $1::text
            ORDER BY did, created_at DESC, uri DESC) newest) r,
     (SELECT COUNT(DISTINCT did)::int AS n FROM favorites WHERE subject_uri = $1::text) f,
-    (SELECT COUNT(*)::int AS n FROM sheets WHERE fork_of_uri = $1::text AND NOT draft) k
+    -- Counted as Forks lists them: not drafts, not hidden accounts'.
+    (SELECT COUNT(*)::int AS n FROM sheets s LEFT JOIN profiles p ON p.did = s.did
+     WHERE s.fork_of_uri = $1::text AND NOT s.draft AND NOT COALESCE(p.hidden, false)) k
 ON CONFLICT (uri) DO UPDATE SET
     rating_count = excluded.rating_count, rating_avg = excluded.rating_avg,
     rating_score = excluded.rating_score, favorite_count = excluded.favorite_count,
@@ -1280,9 +1282,13 @@ func (q *Queries) UpsertFavorite(ctx context.Context, arg UpsertFavoriteParams) 
 }
 
 const upsertProfile = `-- name: UpsertProfile :exec
-INSERT INTO profiles (did, handle, display_name, avatar, resolved_at) VALUES ($1, $2, $3, $4, now())
-ON CONFLICT (did) DO UPDATE SET handle = excluded.handle, display_name = excluded.display_name,
-    avatar = excluded.avatar, resolved_at = excluded.resolved_at
+INSERT INTO profiles (did, handle, display_name, avatar, resolved_at)
+VALUES ($1, $2, $3, $4, now())
+ON CONFLICT (did) DO UPDATE SET
+    handle = CASE WHEN $5::bool THEN profiles.handle ELSE excluded.handle END,
+    display_name = CASE WHEN $6::bool THEN profiles.display_name ELSE excluded.display_name END,
+    avatar = CASE WHEN $6::bool THEN profiles.avatar ELSE excluded.avatar END,
+    resolved_at = excluded.resolved_at
 `
 
 type UpsertProfileParams struct {
@@ -1290,14 +1296,19 @@ type UpsertProfileParams struct {
 	Handle      string
 	DisplayName string
 	Avatar      string
+	KeepHandle  bool
+	KeepProfile bool
 }
 
+// A lookup that failed (keep_handle, keep_profile) leaves what we had.
 func (q *Queries) UpsertProfile(ctx context.Context, arg UpsertProfileParams) error {
 	_, err := q.db.Exec(ctx, upsertProfile,
 		arg.Did,
 		arg.Handle,
 		arg.DisplayName,
 		arg.Avatar,
+		arg.KeepHandle,
+		arg.KeepProfile,
 	)
 	return err
 }
