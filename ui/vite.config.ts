@@ -1,11 +1,12 @@
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
+import tailwindcss from '@tailwindcss/vite'
 import path from 'path'
 
 // Served on 127.0.0.1 (not localhost) so the session cookie set during
 // the OAuth callback — which atproto requires on a loopback IP — applies.
 export default defineConfig({
-  plugins: [react()],
+  plugins: [react(), tailwindcss()],
   base: '/',
   build: {
     // The play-along audio worklet must load from a real URL (Safari

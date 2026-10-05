@@ -467,7 +467,7 @@ function Editor({
           )}
           {opened && (
             <div className="flex flex-wrap items-center justify-between gap-2 rounded-2xl bg-glow px-4 py-2.5 font-bold text-glow-ink" role="status">
-              <span className="min-w-0 break-words">
+              <span className="min-w-0 wrap-break-word">
                 {opened.error
                   ? `Couldn't open ${opened.name}: ${opened.error}.`
                   : `Opened ${opened.name}${opened.moreSongs ? ". It has more songs; this is the first" : ''}.`}
@@ -510,7 +510,7 @@ function Editor({
           <textarea
             id="sheet-body"
             ref={textarea}
-            className="min-h-[26rem] w-full resize-y rounded-2xl bg-surface p-4 font-mono text-[0.85rem] leading-relaxed text-ink placeholder:text-ink-faint focus:outline-none focus-visible:ring-2 focus-visible:ring-chord"
+            className="min-h-104 w-full resize-y rounded-2xl bg-surface p-4 font-mono text-[0.85rem] leading-relaxed text-ink placeholder:text-ink-faint focus:outline-hidden focus-visible:ring-2 focus-visible:ring-chord"
             spellCheck={false}
             placeholder={EXAMPLE}
             value={form.content}
@@ -537,7 +537,7 @@ function Editor({
           </p>
           <Field label="Notes for players (optional)">
             <textarea
-              className="field h-auto min-h-[5.5rem] resize-y py-3"
+              className="field h-auto min-h-22 resize-y py-3"
               placeholder="Strumming pattern, how the intro riff goes, what to listen for…"
               value={form.description}
               onChange={(e) => set('description', e.target.value)}

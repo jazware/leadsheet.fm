@@ -324,7 +324,7 @@ function SheetScreen({ page, actor }: { page: SheetPageData; actor: string }) {
             <div className="no-print lg:hidden">{diagrams}</div>
             <div ref={sheetRef}>
               <ChordTipContext.Provider value={{ strings: c.strings, instrument: c.instrument }}>
-                <SheetView doc={c.doc} options={c.options} now={c.now} onChordClick={c.playFrom} className="max-w-[40rem] pt-1" />
+                <SheetView doc={c.doc} options={c.options} now={c.now} onChordClick={c.playFrom} className="max-w-160 pt-1" />
               </ChordTipContext.Provider>
             </div>
             <Related page={page} />
@@ -852,7 +852,7 @@ function ListenLinks({ links }: { links: string[] }) {
       </p>
       {embed && (
         <div
-          className={clsx('w-full max-w-[40rem] overflow-hidden rounded-2xl bg-surface', !embed.height && 'aspect-video')}
+          className={clsx('w-full max-w-160 overflow-hidden rounded-2xl bg-surface', !embed.height && 'aspect-video')}
           style={embed.height ? { height: embed.height } : undefined}
         >
           <iframe
@@ -890,7 +890,7 @@ function TitleBlock({ page, actor }: { page: SheetPageData; actor: string }) {
   return (
     <header className="flex flex-col gap-3">
       <div>
-        <h1 className="text-4xl font-black leading-[1.05] tracking-tight sm:text-5xl">{sheet.title}</h1>
+        <h1 className="text-4xl font-black leading-[1.05] tracking-tight sm:text-5xl sm:leading-none">{sheet.title}</h1>
         <p className="mt-1.5 text-lg font-bold text-ink-soft">
           <Link to={`/artists/${sheet.artistSlug}`} className="text-ink hover:underline">
             {sheet.artist}
@@ -981,7 +981,7 @@ function keyValue(c: Controls) {
 }
 
 function PlayButton({ c, size }: { c: Controls; size: 'md' | 'lg' | 'xl' }) {
-  const box = { md: 'h-12 w-12', lg: 'h-14 w-14', xl: 'h-[4.5rem] w-[4.5rem]' }[size]
+  const box = { md: 'h-12 w-12', lg: 'h-14 w-14', xl: 'h-18 w-18' }[size]
   const ico = { md: 'h-5 w-5', lg: 'h-6 w-6', xl: 'h-7 w-7' }[size]
   return (
     <button
@@ -1098,7 +1098,7 @@ function BottomBar({ c }: { c: Controls }) {
   // Fixed widths, so nothing in the bar moves as the key changes or the
   // capo comes and goes.
   const mini = (label: string, value: string, onStep: (d: number) => void, hidden = false) => (
-    <div className={clsx('flex w-[5.5rem] shrink-0 flex-col items-center', hidden && 'invisible')} aria-hidden={hidden || undefined}>
+    <div className={clsx('flex w-22 shrink-0 flex-col items-center', hidden && 'invisible')} aria-hidden={hidden || undefined}>
       <span className="text-[0.65rem] font-extrabold text-ink-soft">{label}</span>
       <div className="flex items-center">
         <button type="button" className="flex h-10 w-7 items-center justify-center" onClick={() => onStep(-1)} aria-label={`${label} down`}>

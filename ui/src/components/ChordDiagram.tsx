@@ -141,7 +141,7 @@ function FrettedDiagram({
           box
         )
       ) : (
-        <div className="flex h-[5.5rem] w-16 items-center justify-center text-center text-[0.65rem] font-bold leading-tight text-ink-soft">
+        <div className="flex h-22 w-16 items-center justify-center text-center text-[0.65rem] font-bold leading-tight text-ink-soft">
           no shape for this one yet
         </div>
       )}
@@ -257,7 +257,7 @@ function PianoDiagram({ chord, label, flats, cycle }: DiagramProps) {
     </svg>
   )
   return (
-    <figure className="relative flex w-[6.75rem] shrink-0 flex-col items-center rounded-2xl bg-surface px-1 pb-1.5 pt-2.5">
+    <figure className="relative flex w-27 shrink-0 flex-col items-center rounded-2xl bg-surface px-1 pb-1.5 pt-2.5">
       <figcaption className="mb-1.5 text-base font-black leading-none text-chord">{pretty(label)}</figcaption>
       {v ? (
         sound ? (

@@ -1,9 +1,91 @@
-@import '@fontsource-variable/nunito/wght.css';
-@import '@fontsource/jetbrains-mono/400.css';
+@import '@fontsource-variable/nunito/wght.css' layer(base);
+@import '@fontsource/jetbrains-mono/400.css' layer(base);
 
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
+@import 'tailwindcss';
+
+/* inline: utilities read the palette vars where they're used, so the day and print overrides apply. */
+@theme inline {
+  --color-bg: rgb(var(--bg));
+
+  --color-surface: rgb(var(--surface));
+  --color-surface-raised: rgb(var(--surface-raised));
+
+  --color-band: rgb(var(--band));
+  --color-rule: rgb(var(--rule));
+
+  --color-ink: rgb(var(--ink));
+  --color-ink-soft: rgb(var(--ink-soft));
+  --color-ink-faint: rgb(var(--ink-faint));
+
+  --color-chord: rgb(var(--chord));
+
+  --color-glow: rgb(var(--glow));
+  --color-glow-ink: rgb(var(--glow-ink));
+
+  --font-sans: 'Nunito Variable', Nunito, system-ui, sans-serif;
+  --font-mono: 'JetBrains Mono', ui-monospace, monospace;
+
+  --shadow-float: 0 10px 30px rgb(0 0 0 / 0.28);
+
+  /* v3's fixed line heights: v4's are unitless, so text that only sets a
+     size (text-[0.8rem] in a text-sm row) would inherit a ratio instead. */
+  --text-xs--line-height: 1rem;
+  --text-sm--line-height: 1.25rem;
+  --text-base--line-height: 1.5rem;
+  --text-lg--line-height: 1.75rem;
+  --text-xl--line-height: 1.75rem;
+  --text-2xl--line-height: 2rem;
+  --text-3xl--line-height: 2.25rem;
+  --text-4xl--line-height: 2.5rem;
+}
+
+/* v4 dropped v3's pointer cursor on buttons. */
+@layer base {
+  button:not(:disabled),
+  [role='button']:not(:disabled) {
+    cursor: pointer;
+  }
+  /* v4's preflight zeroes every margin, which pins a modal to the corner. */
+  dialog {
+    margin: auto;
+  }
+}
+
+@utility btn {
+  @apply inline-flex min-h-[44px] min-w-[44px] items-center justify-center gap-1.5 rounded-full bg-surface px-4 text-[0.95rem] font-extrabold text-ink transition-colors hover:bg-surface-raised disabled:cursor-not-allowed disabled:opacity-50;
+}
+
+@utility btn-sm {
+  @apply min-h-[36px] min-w-[36px] px-3 text-sm;
+}
+
+@utility btn-primary {
+  @apply bg-ink text-bg hover:bg-ink/90;
+}
+
+@utility btn-accent {
+  @apply bg-chord text-bg hover:bg-chord/90;
+}
+
+@utility btn-on {
+  @apply bg-glow text-glow-ink hover:bg-glow/90;
+}
+
+@utility card {
+  @apply rounded-[20px] bg-surface;
+}
+
+@utility field {
+  @apply h-12 w-full rounded-2xl bg-surface px-4 text-base font-bold text-ink placeholder:font-semibold placeholder:text-ink-faint focus:outline-hidden focus-visible:ring-2 focus-visible:ring-chord focus-visible:ring-offset-0;
+}
+
+@utility label {
+  @apply mb-1.5 block text-[0.8rem] font-extrabold text-ink-soft;
+}
+
+@utility pill {
+  @apply inline-flex items-center gap-1 whitespace-nowrap rounded-full bg-surface px-3 py-1 text-[0.8rem] font-extrabold text-ink;
+}
 
 @layer base {
   /* Night (default). Chords are >= 10:1 on both bg and surface. */
@@ -41,43 +123,13 @@
     @apply bg-bg font-sans text-ink antialiased;
   }
   :focus-visible {
-    @apply outline-none ring-2 ring-chord ring-offset-2 ring-offset-bg;
+    @apply outline-hidden ring-2 ring-chord ring-offset-2 ring-offset-bg;
   }
   ::selection {
     @apply bg-glow text-glow-ink;
   }
   mark {
     @apply rounded-md bg-glow px-0.5 text-glow-ink;
-  }
-}
-
-@layer components {
-  .btn {
-    @apply inline-flex min-h-[44px] min-w-[44px] items-center justify-center gap-1.5 rounded-full bg-surface px-4 text-[0.95rem] font-extrabold text-ink transition-colors hover:bg-surface-raised disabled:cursor-not-allowed disabled:opacity-50;
-  }
-  .btn-sm {
-    @apply min-h-[36px] min-w-[36px] px-3 text-sm;
-  }
-  .btn-primary {
-    @apply bg-ink text-bg hover:bg-ink/90;
-  }
-  .btn-accent {
-    @apply bg-chord text-bg hover:bg-chord/90;
-  }
-  .btn-on {
-    @apply bg-glow text-glow-ink hover:bg-glow/90;
-  }
-  .card {
-    @apply rounded-[20px] bg-surface;
-  }
-  .field {
-    @apply h-12 w-full rounded-2xl bg-surface px-4 text-base font-bold text-ink placeholder:font-semibold placeholder:text-ink-faint focus:outline-none focus-visible:ring-2 focus-visible:ring-chord focus-visible:ring-offset-0;
-  }
-  .label {
-    @apply mb-1.5 block text-[0.8rem] font-extrabold text-ink-soft;
-  }
-  .pill {
-    @apply inline-flex items-center gap-1 whitespace-nowrap rounded-full bg-surface px-3 py-1 text-[0.8rem] font-extrabold text-ink;
   }
 }
 

@@ -82,7 +82,7 @@ export function ChordTip({
     <span ref={wrap} className="relative inline-block" onMouseEnter={show} onMouseLeave={() => setOpen(false)}>
       <button
         type="button"
-        className={clsx('cursor-help rounded-sm text-left focus-visible:ring-offset-0', className)}
+        className={clsx('cursor-help rounded-xs text-left focus-visible:ring-offset-0', className)}
         aria-describedby={open ? id : undefined}
         onFocus={show}
         onBlur={(e) => {

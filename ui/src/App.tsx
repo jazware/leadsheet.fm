@@ -151,7 +151,7 @@ function Header({ className }: { className?: string }) {
       {!onHome && !onSearch && (
         <SearchField
           suggest
-          className="order-last basis-full sm:order-none sm:flex-1 sm:basis-auto"
+          className="order-last basis-full sm:order-0 sm:flex-1 sm:basis-auto"
           value={q}
           onChange={setQ}
           onSubmit={() => q.trim() && navigate(`/search?q=${encodeURIComponent(q.trim())}`)}

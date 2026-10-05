@@ -137,7 +137,7 @@ export function StrumBuilder({
                 aria-label={`Count ${counts[i].count}: ${WORD[slots[i]]}. Tap to change.`}
                 onClick={() => setSlots((s) => s.map((x, j) => (j === i ? NEXT[x] : x)))}
                 className={clsx(
-                  'flex h-[4.5rem] w-11 flex-col items-center justify-center gap-2 rounded-2xl',
+                  'flex h-18 w-11 flex-col items-center justify-center gap-2 rounded-2xl',
                   slots[i] === '.' ? 'bg-bg' : 'bg-surface-raised',
                   'hover:ring-2 hover:ring-rule',
                 )}
