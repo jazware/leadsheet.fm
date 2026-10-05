@@ -10,7 +10,7 @@ COPY ui/ ./
 RUN pnpm build
 
 # Stage 2: the Go binary, with the UI embedded
-FROM golang:1.26 AS builder
+FROM golang:1.26.8 AS builder
 ARG GIT_COMMIT=unknown
 ARG BUILD_TIME=unknown
 WORKDIR /app
