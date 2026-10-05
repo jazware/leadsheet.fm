@@ -1,9 +1,9 @@
 # Build context: the repo root (see docker-compose.yml).
 
 # Stage 1: the web UI
-FROM node:22-alpine AS ui-builder
+FROM node:26-alpine AS ui-builder
 WORKDIR /app/ui
-RUN corepack enable && corepack prepare pnpm@10.29.1 --activate
+RUN npm install -g pnpm@10.29.1
 COPY ui/package.json ui/pnpm-lock.yaml ./
 RUN pnpm install --frozen-lockfile
 COPY ui/ ./
