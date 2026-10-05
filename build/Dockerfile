@@ -3,7 +3,7 @@
 # Stage 1: the web UI
 FROM node:26-alpine AS ui-builder
 WORKDIR /app/ui
-RUN npm install -g pnpm@10.29.1
+RUN npm install -g pnpm@10.34.6
 COPY ui/package.json ui/pnpm-lock.yaml ./
 RUN pnpm install --frozen-lockfile
 COPY ui/ ./

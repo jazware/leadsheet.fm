@@ -1062,8 +1062,8 @@ function PlayAlongStatus({ c }: { c: Controls }) {
 /** Keeps the chord being played along to in view, a third of the way down. */
 function useFollowScroll(
   now: Segment | null,
-  root: React.RefObject<HTMLElement>,
-  scroller: React.RefObject<HTMLElement> | null,
+  root: React.RefObject<HTMLElement | null>,
+  scroller: React.RefObject<HTMLElement | null> | null,
   enabled: boolean,
 ) {
   useEffect(() => {
@@ -1297,7 +1297,7 @@ function Stage({ page, c }: { page: SheetPageData; c: Controls }) {
 function useAutoScroll(
   running: boolean,
   speed: number,
-  target: React.RefObject<HTMLElement> | null,
+  target: React.RefObject<HTMLElement | null> | null,
   onEnd: () => void,
 ) {
   const end = useRef(onEnd)
