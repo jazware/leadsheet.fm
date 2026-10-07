@@ -76,16 +76,29 @@ clean:
 
 # --- Deploying (docker compose) --------------------------------------------
 
-# Build and start the app + Postgres. Reads env/leadsheet.env, decrypting it
-# from env/leadsheet.enc.env with sops first when that exists.
-up:
+
+
+
+
+# Pull the app image (main, or a commit pushed by `just docker-push`) and start it with Postgres; decrypts env/leadsheet.enc.env first
+up tag="main":
     #!/usr/bin/env bash
     set -euo pipefail
     if [ -f env/leadsheet.enc.env ]; then sops decrypt env/leadsheet.enc.env > env/leadsheet.env; fi
     test -f env/leadsheet.env || { echo "env/leadsheet.env missing (see env/leadsheet.env.example)"; exit 1; }
-    export GIT_COMMIT=$(git rev-parse --short HEAD 2>/dev/null || echo unknown)
+    export LEADSHEET_IMAGE_TAG={{tag}}
+    docker compose --env-file env/leadsheet.env -f build/docker-compose.yml pull leadsheet
+    docker compose --env-file env/leadsheet.env -f build/docker-compose.yml up -d
+
+# Build the app image from this checkout and start it, instead of pulling one
+up-local:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    if [ -f env/leadsheet.enc.env ]; then sops decrypt env/leadsheet.enc.env > env/leadsheet.env; fi
+    test -f env/leadsheet.env || { echo "env/leadsheet.env missing (see env/leadsheet.env.example)"; exit 1; }
+    export GIT_COMMIT=$(git rev-parse --short=12 HEAD 2>/dev/null || echo unknown)
     export BUILD_TIME=$(date -u +%Y-%m-%dT%H:%M:%SZ)
-    docker compose --env-file env/leadsheet.env -f build/docker-compose.yml up --build -d
+    docker compose --env-file env/leadsheet.env -f build/docker-compose.yml -f build/docker-compose.build.yml up --build -d
 
 # Stop the app and Postgres (the database volume is kept)
 down:

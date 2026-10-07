@@ -33,11 +33,15 @@ type Store struct {
 	q  *dbq.Queries
 }
 
-// Open connects to Postgres at dsn and applies pending migrations.
-func Open(ctx context.Context, dsn string) (*Store, error) {
+// Open connects to Postgres at dsn and applies pending migrations. A
+// non-empty password replaces the one in dsn, so it can come from a file.
+func Open(ctx context.Context, dsn, password string) (*Store, error) {
 	cfg, err := pgxpool.ParseConfig(dsn)
 	if err != nil {
 		return nil, fmt.Errorf("connecting to postgres: %w", err)
+	}
+	if password != "" {
+		cfg.ConnConfig.Password = password
 	}
 	// A span per query (the SQL, not its arguments), named for the sqlc
 	// query. Taking a connection from the pool isn't worth a span.

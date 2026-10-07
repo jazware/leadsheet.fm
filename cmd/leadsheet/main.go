@@ -50,9 +50,14 @@ func main() {
 			},
 			&cli.StringFlag{
 				Name:    "database-url",
-				Usage:   "Postgres connection string (`just db` runs one locally)",
+				Usage:   "Postgres connection string (`just db` runs one locally); or LEADSHEET_DATABASE_URL_FILE",
 				EnvVars: []string{"LEADSHEET_DATABASE_URL"},
 				Value:   "postgres://leadsheet:leadsheet@127.0.0.1:5433/leadsheet?sslmode=disable",
+			},
+			&cli.StringFlag{
+				Name:    "database-password",
+				Usage:   "Postgres password, replacing the one in --database-url; or LEADSHEET_DATABASE_PASSWORD_FILE",
+				EnvVars: []string{"LEADSHEET_DATABASE_PASSWORD"},
 			},
 			&cli.StringFlag{
 				Name:    "jetstream-host",
@@ -62,7 +67,7 @@ func main() {
 			},
 			&cli.StringFlag{
 				Name:    "jetstream-api-key",
-				Usage:   "Jetstream API key; enables archive replay (exact resume after downtime, no relay backfill)",
+				Usage:   "Jetstream API key; enables archive replay (exact resume after downtime, no relay backfill); or JETSTREAM_API_KEY_FILE",
 				EnvVars: []string{"JETSTREAM_API_KEY"},
 			},
 			&cli.StringFlag{
@@ -89,7 +94,7 @@ func main() {
 			},
 			&cli.StringFlag{
 				Name:    "oauth-client-key",
-				Usage:   "Multibase P-256 private key for a confidential OAuth client (see gen-client-key); public URL only",
+				Usage:   "Multibase P-256 private key for a confidential OAuth client (see gen-client-key); public URL only; or LEADSHEET_OAUTH_CLIENT_KEY_FILE",
 				EnvVars: []string{"LEADSHEET_OAUTH_CLIENT_KEY"},
 			},
 			&cli.StringFlag{
@@ -143,6 +148,24 @@ func run(cctx *cli.Context) error {
 	logger := slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: level}))
 	slog.SetDefault(logger)
 
+	// Read before anything starts, so a bad secret file fails fast.
+	dbURL, err := secretFlag(cctx, "database-url", "LEADSHEET_DATABASE_URL")
+	if err != nil {
+		return err
+	}
+	dbPassword, err := secretFlag(cctx, "database-password", "LEADSHEET_DATABASE_PASSWORD")
+	if err != nil {
+		return err
+	}
+	clientKey, err := secretFlag(cctx, "oauth-client-key", "LEADSHEET_OAUTH_CLIENT_KEY")
+	if err != nil {
+		return err
+	}
+	jetstreamKey, err := secretFlag(cctx, "jetstream-api-key", "JETSTREAM_API_KEY")
+	if err != nil {
+		return err
+	}
+
 	logger.Info("starting leadsheet",
 		"version", version.Version,
 		"commit", version.GitCommit,
@@ -164,7 +187,7 @@ func run(cctx *cli.Context) error {
 	}
 
 	startCtx, cancelStart := context.WithTimeout(context.Background(), time.Minute)
-	db, err := store.Open(startCtx, cctx.String("database-url"))
+	db, err := store.Open(startCtx, dbURL, dbPassword)
 	cancelStart()
 	if err != nil {
 		return err
@@ -172,7 +195,7 @@ func run(cctx *cli.Context) error {
 	defer db.Close()
 
 	oauthApp, err := server.NewOAuthApp(cctx.String("public-url"),
-		cctx.String("oauth-client-key"), cctx.String("oauth-client-key-id"), db)
+		clientKey, cctx.String("oauth-client-key-id"), db)
 	if err != nil {
 		return err
 	}
@@ -182,7 +205,7 @@ func run(cctx *cli.Context) error {
 	indexer := ingest.NewIndexer(logger, db)
 	profiles := ingest.NewProfileResolver(logger, db, dir, cctx.String("bsky-appview"))
 	backfiller := ingest.NewBackfiller(logger, db, indexer, dir, cctx.String("relay-host"))
-	firehose := ingest.NewFirehose(logger, db, indexer, cctx.String("jetstream-host"), cctx.String("jetstream-api-key"))
+	firehose := ingest.NewFirehose(logger, db, indexer, cctx.String("jetstream-host"), jetstreamKey)
 
 	// Background workers stop before the database closes.
 	bgCtx, cancelBg := context.WithCancel(context.Background())

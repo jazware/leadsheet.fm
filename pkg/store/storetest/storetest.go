@@ -19,6 +19,18 @@ const envVar = "LEADSHEET_TEST_DATABASE_URL"
 
 func New(t *testing.T) *store.Store {
 	t.Helper()
+	st, err := store.Open(context.Background(), URL(t), "")
+	if err != nil {
+		t.Fatalf("opening test store: %v", err)
+	}
+	t.Cleanup(st.Close)
+	return st
+}
+
+// URL creates a fresh, empty database, dropped when the test ends, and
+// returns its connection string.
+func URL(t *testing.T) string {
+	t.Helper()
 	admin := os.Getenv(envVar)
 	if admin == "" {
 		t.Skipf("%s not set; run `just test` to start a throwaway Postgres", envVar)
@@ -50,10 +62,5 @@ func New(t *testing.T) *store.Store {
 		t.Fatal(err)
 	}
 	u.Path = "/" + name
-	st, err := store.Open(ctx, u.String())
-	if err != nil {
-		t.Fatalf("opening test store: %v", err)
-	}
-	t.Cleanup(st.Close)
-	return st
+	return u.String()
 }

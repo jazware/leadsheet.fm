@@ -220,7 +220,8 @@ gets its own database.
 `build/docker-compose.yml` runs the app and Postgres 17. Put
 `POSTGRES_PASSWORD=` (and optionally `LEADSHEET_OAUTH_CLIENT_KEY=`, see
 OAuth) in `env/leadsheet.env`, set `LEADSHEET_PUBLIC_URL` in the compose file
-to your domain, and `just up`. The app listens on :8120 and needs HTTPS in
+to your domain, and `just up`, which pulls `ghcr.io/jazware/mono/leadsheet`
+(`just up-local` builds the image from the checkout instead). The app listens on :8120 and needs HTTPS in
 front of it (any reverse proxy or a Cloudflare Tunnel). PDS servers fetch
 `/oauth/client-metadata.json` server-side, so bot challenges must not apply
 to `/oauth/*`. Prometheus metrics and pprof are on 127.0.0.1:8122. Set
@@ -250,6 +251,7 @@ atproto OAuth via indigo's `atproto/auth/oauth`, asking for the
 | `--listen-address` | `LEADSHEET_LISTEN_ADDRESS` | `127.0.0.1:8120` |
 | `--public-url` | `LEADSHEET_PUBLIC_URL` | `http://127.0.0.1:8120` |
 | `--database-url` | `LEADSHEET_DATABASE_URL` | `postgres://leadsheet:leadsheet@127.0.0.1:5433/leadsheet?sslmode=disable` |
+| `--database-password` | `LEADSHEET_DATABASE_PASSWORD` | (none: the URL's) |
 | `--jetstream-host` | `LEADSHEET_JETSTREAM_HOST` | `jetstream.us-east.bsky.network` |
 | `--jetstream-api-key` | `JETSTREAM_API_KEY` | (none) |
 | `--relay-host` | `LEADSHEET_RELAY_HOST` | `https://relay1.us-east.bsky.network` |
@@ -263,6 +265,11 @@ atproto OAuth via indigo's `atproto/auth/oauth`, asking for the
 | `--tracing-sample-ratio` | `TRACING_SAMPLE_RATIO` | `1.0` |
 | (tracing endpoint) | `OTEL_EXPORTER_OTLP_ENDPOINT` | (none: tracing off) |
 | `--debug` | `LEADSHEET_DEBUG` | off |
+
+`LEADSHEET_DATABASE_URL`, `LEADSHEET_DATABASE_PASSWORD`,
+`LEADSHEET_OAUTH_CLIENT_KEY` and `JETSTREAM_API_KEY` can come from a file
+instead: set `<NAME>_FILE` to its path (one trailing newline is dropped, and
+setting both is an error).
 
 ## Still to do
 

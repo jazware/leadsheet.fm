@@ -1,18 +1,15 @@
 # Leadsheet and its Postgres. Put POSTGRES_PASSWORD (and optionally
 # LEADSHEET_OAUTH_CLIENT_KEY) in env/leadsheet.env and run `just up`, which
-# passes it for the ${...} values below. The app listens on :8120; put HTTPS
-# in front of it (a reverse proxy, a Cloudflare Tunnel, ...).
+# passes it for the ${...} values below. `just up` pulls the app image
+# (LEADSHEET_IMAGE_TAG picks the tag, default main); `just up-local` builds it
+# here with docker-compose.build.yml. The app listens on :8120; put HTTPS in
+# front of it (a reverse proxy, a Cloudflare Tunnel, ...).
 name: leadsheet
 
 services:
   leadsheet:
-    build:
-      context: ..
-      dockerfile: build/Dockerfile
-      args:
-        - GIT_COMMIT=${GIT_COMMIT:-unknown}
-        - BUILD_TIME=${BUILD_TIME:-unknown}
-    image: leadsheet
+    # Pushed from the Mac by `just docker-push`: :main or a 12-character commit.
+    image: ghcr.io/jazware/mono/leadsheet:${LEADSHEET_IMAGE_TAG:-main}
     container_name: leadsheet
     restart: unless-stopped
     environment:

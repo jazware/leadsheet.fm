@@ -1,0 +1,11 @@
+# Builds the image from this checkout instead of pulling it (`just up-local`).
+services:
+  leadsheet:
+    build:
+      context: ../../../
+      dockerfile: packages/leadsheet/build/Dockerfile
+      args:
+        - GIT_COMMIT=${GIT_COMMIT:-unknown}
+        - BUILD_TIME=${BUILD_TIME:-unknown}
+    image: leadsheet:local
+    pull_policy: build
