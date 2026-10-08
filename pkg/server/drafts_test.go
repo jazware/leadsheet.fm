@@ -18,7 +18,7 @@ import (
 // isn't listed, and that "not found" leaked out.
 func TestGetDraftOfNewSong(t *testing.T) {
 	st := storetest.New(t)
-	author := "did:plc:fp5zf7du5zntbwwcxkk3dppd"
+	author := "did:plc:testauthoraaaaaaaaaaaaaa"
 	rec := &records.Sheet{Type: records.NSIDSheet, Title: "Brand New Song", Artist: "Nobody Yet", Content: "[C]la", CreatedAt: "2026-09-25T00:30:03.981Z", Draft: true}
 	if err := st.UpsertSheet(context.Background(), author, "3mwcjcpajuk2y", "cid1", rec); err != nil {
 		t.Fatal(err)

@@ -76,10 +76,6 @@ clean:
 
 # --- Deploying (docker compose) --------------------------------------------
 
-
-
-
-
 # Pull the app image (main, or a commit pushed by `just docker-push`) and start it with Postgres; decrypts env/leadsheet.enc.env first
 up tag="main":
     #!/usr/bin/env bash

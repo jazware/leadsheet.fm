@@ -2,8 +2,8 @@
 services:
   leadsheet:
     build:
-      context: ../../../
-      dockerfile: packages/leadsheet/build/Dockerfile
+      context: ..
+      dockerfile: build/Dockerfile
       args:
         - GIT_COMMIT=${GIT_COMMIT:-unknown}
         - BUILD_TIME=${BUILD_TIME:-unknown}
