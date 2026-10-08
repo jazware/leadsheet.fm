@@ -79,17 +79,18 @@ backward-compatible changes; `goat lex breaking` flags the rest).
   the live tail (and its lookback window) is available. With
   `JETSTREAM_API_KEY`, Leadsheet replays the archive instead, which gives an
   exact resume after any amount of downtime.
-- **Backfill:** on first start (or `just backfill`), the relay's
-  `com.atproto.sync.listReposByCollection` lists every repo with Leadsheet
-  records, and each is paged through with `listRecords` on its PDS. Signing
-  in also backfills your own repo.
+- **Backfill:** without a Jetstream API key, on first start (or `just
+  backfill`), the relay's `com.atproto.sync.listReposByCollection` lists
+  every repo with Leadsheet records, and each is paged through with
+  `listRecords` on its PDS. With a key, archive replay covers it. Signing in
+  also backfills your own repo.
 - **Accounts:** deleted accounts are purged; deactivated, suspended or taken
   down accounts are hidden until they're active again. Handles are resolved
   (and verified) through the identity directory. Display names and avatars
   come from the account's Bluesky profile when it has one.
 - **Outbound calls** (relay, PDSes, Bluesky) have timeouts and retry reads
-  with backoff (`packages/telemetry/robusthttp`). A repo its PDS reports
-  as gone is skipped, not failed.
+  with backoff (the telemetry module's `robusthttp`). A repo its PDS
+  reports as gone is skipped instead of failing the backfill.
 
 Writes from the UI go to the user's PDS over OAuth and are indexed
 immediately. The same commit arriving later from Jetstream is an idempotent
@@ -179,9 +180,10 @@ leaves the device (`ui/src/listen/`):
 - `follow.ts` is an online HMM over the sheet's chords in order, across
   all twelve transpositions, that only jumps to section starts and only
   once it's sure, so it never leaps down the page on a messy second.
-- The model was exported, and its features checked against librosa, in
-  `packages/chordex/ondevice`. `just ui-test` runs the follower and an
-  end-to-end test on synthesized audio.
+- The model was exported, and its features checked against librosa, with
+  the `ondevice` tools of chordex (a separate project that isn't in this
+  repo). `just ui-test` runs the follower and an end-to-end test on
+  synthesized audio.
 
 ### Importing a tab
 
@@ -217,11 +219,13 @@ gets its own database.
 
 ### Deploying
 
-`build/docker-compose.yml` runs the app and Postgres 17. Put
-`POSTGRES_PASSWORD=` (and optionally `LEADSHEET_OAUTH_CLIENT_KEY=`, see
-OAuth) in `env/leadsheet.env`, set `LEADSHEET_PUBLIC_URL` in the compose file
-to your domain, and `just up`, which pulls `ghcr.io/jazware/mono/leadsheet`
-(`just up-local` builds the image from the checkout instead). The app listens on :8120 and needs HTTPS in
+`build/docker-compose.yml` runs the app and Postgres 17. Copy
+`env/leadsheet.env.example` to `env/leadsheet.env` and fill in
+`POSTGRES_PASSWORD=`, `LEADSHEET_PUBLIC_URL=` (your domain, since it
+defaults to `https://leadsheet.fm`) and optionally
+`LEADSHEET_OAUTH_CLIENT_KEY=` (see OAuth). Then `just up` pulls
+`ghcr.io/jazware/mono/leadsheet` and starts both (`just up-local` builds the
+image from the checkout instead). The app listens on :8120 and needs HTTPS in
 front of it (any reverse proxy or a Cloudflare Tunnel). PDS servers fetch
 `/oauth/client-metadata.json` server-side, so bot challenges must not apply
 to `/oauth/*`. Prometheus metrics and pprof are on 127.0.0.1:8122. Set

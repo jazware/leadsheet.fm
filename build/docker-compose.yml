@@ -8,7 +8,7 @@ name: leadsheet
 
 services:
   leadsheet:
-    # Pushed from the Mac by `just docker-push`: :main or a 12-character commit.
+    # Published from the monorepo this package lives in: :main or a 12-character commit.
     image: ghcr.io/jazware/mono/leadsheet:${LEADSHEET_IMAGE_TAG:-main}
     container_name: leadsheet
     restart: unless-stopped
