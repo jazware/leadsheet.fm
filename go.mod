@@ -1,6 +1,6 @@
 module github.com/jazware/leadsheet.fm
 
-go 1.26.6
+go 1.27.2
 
 require (
 	github.com/bluesky-social/indigo v0.0.0-20260929184902-b2619d864df0
