@@ -90,12 +90,10 @@ func migrateUp(pool *pgxpool.Pool) error {
 	return nil
 }
 
-// tx runs fn with queries bound to one transaction.
 func (s *Store) tx(ctx context.Context, fn func(*dbq.Queries) error) error {
 	return pgx.BeginFunc(ctx, s.db, func(tx pgx.Tx) error { return fn(s.q.WithTx(tx)) })
 }
 
-// noRows maps "no row" to ErrNotFound.
 func noRows(err error) error {
 	if errors.Is(err, pgx.ErrNoRows) {
 		return ErrNotFound

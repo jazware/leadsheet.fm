@@ -13,7 +13,6 @@ import (
 	"github.com/jazware/leadsheet.fm/pkg/store"
 )
 
-// Indexer applies record operations to the store.
 type Indexer struct {
 	logger *slog.Logger
 	store  *store.Store
@@ -63,7 +62,6 @@ func (ix *Indexer) put(ctx context.Context, did, collection, rkey, cid string, r
 	return "unknown", nil
 }
 
-// Delete removes a record from the index.
 func (ix *Indexer) Delete(ctx context.Context, did, collection, rkey string) error {
 	err := ix.delete(ctx, did, collection, rkey)
 	metrics.RecordsIndexed.WithLabelValues(collection, "delete", metrics.Result(err)).Inc()

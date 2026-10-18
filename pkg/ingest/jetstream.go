@@ -39,7 +39,6 @@ func NewFirehose(logger *slog.Logger, st *store.Store, ix *Indexer, host, apiKey
 	return &Firehose{logger: logger.With("component", "firehose"), store: st, indexer: ix, host: host, apiKey: apiKey}
 }
 
-// CanReplay reports whether the firehose can replay history itself.
 func (f *Firehose) CanReplay() bool { return f.apiKey != "" }
 
 // Run consumes events until ctx is cancelled, reconnecting on failure.

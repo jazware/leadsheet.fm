@@ -18,7 +18,6 @@ import (
 	"github.com/labstack/echo/v4/middleware"
 )
 
-// Server holds handler dependencies.
 type Server struct {
 	logger   *slog.Logger
 	store    *store.Store

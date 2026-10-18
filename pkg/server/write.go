@@ -150,7 +150,6 @@ func rkeyOf(uri string) string {
 	return uri[strings.LastIndex(uri, "/")+1:]
 }
 
-// pdsError reports a failed repo write to the user.
 func (s *Server) pdsError(err error, what string) error {
 	s.logger.Warn("pds write failed", "what", what, "error", err)
 	return echo.NewHTTPError(http.StatusBadGateway, "your PDS rejected the "+what+": "+err.Error())
@@ -374,7 +373,6 @@ func (s *Server) deleteAll(ctx context.Context, sess *oauth.ClientSession, colle
 	return nil
 }
 
-// respondStats returns a sheet's updated stats and the viewer's state.
 func (s *Server) respondStats(c echo.Context, uri string) error {
 	ctx := c.Request().Context()
 	sheet, err := s.store.GetSheetSummary(ctx, uri)

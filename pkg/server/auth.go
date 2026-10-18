@@ -250,7 +250,6 @@ func loginFailure(q url.Values) string {
 	return "denied"
 }
 
-// withQuery sets one query parameter on a local path.
 func withQuery(path, key, value string) string {
 	u, err := url.Parse(path)
 	if err != nil {
@@ -297,7 +296,6 @@ func (s *Server) signOut(c echo.Context) {
 	c.SetCookie(&http.Cookie{Name: sessionCookie, Path: "/", MaxAge: -1, HttpOnly: true})
 }
 
-// resolveActor turns a handle or DID from a URL into a DID.
 func (s *Server) resolveActor(ctx context.Context, actor string) (string, error) {
 	if strings.HasPrefix(actor, "did:") {
 		if _, err := syntax.ParseDID(actor); err != nil {

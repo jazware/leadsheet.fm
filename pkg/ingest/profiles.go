@@ -40,7 +40,6 @@ func NewProfileResolver(logger *slog.Logger, st *store.Store, dir identity.Direc
 	}
 }
 
-// Run resolves stale profiles until ctx is cancelled.
 func (r *ProfileResolver) Run(ctx context.Context) {
 	ticker := time.NewTicker(2 * time.Second)
 	defer ticker.Stop()
@@ -63,7 +62,6 @@ func (r *ProfileResolver) Run(ctx context.Context) {
 	}
 }
 
-// Resolve refreshes up to 25 accounts' profiles now.
 func (r *ProfileResolver) Resolve(ctx context.Context, dids ...string) {
 	var out struct {
 		Profiles []struct {

@@ -127,7 +127,6 @@ func (b *Backfiller) listRepos(ctx context.Context) ([]string, error) {
 	return dids, nil
 }
 
-// BackfillRepo indexes every Leadsheet record in one repo.
 func (b *Backfiller) BackfillRepo(ctx context.Context, did string) (err error) {
 	ctx, span := tracing.Start(ctx, "backfill.repo", attribute.String("did", did))
 	defer func() {

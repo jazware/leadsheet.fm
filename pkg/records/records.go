@@ -19,10 +19,8 @@ const (
 	NSIDFavorite = "fm.leadsheet.favorite"
 )
 
-// Collections is every collection Leadsheet indexes.
 var Collections = []string{NSIDSheet, NSIDRating, NSIDFavorite}
 
-// StrongRef is com.atproto.repo.strongRef.
 type StrongRef struct {
 	URI string `json:"uri"`
 	CID string `json:"cid"`
@@ -95,7 +93,6 @@ func Validate(collection string, record any) error {
 	return lexicon.ValidateRecord(catalog, data, collection, lexicon.AllowLenientDatetime)
 }
 
-// Decode validates a raw record and decodes it into out.
 func Decode(collection string, record any, out any) error {
 	if err := Validate(collection, record); err != nil {
 		return err

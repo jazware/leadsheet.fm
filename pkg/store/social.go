@@ -117,7 +117,6 @@ func (s *Store) GetViewerState(ctx context.Context, did, subject string) (*Viewe
 	return vs, nil
 }
 
-// Favorites lists the sheets an account has favorited, newest first.
 func (s *Store) Favorites(ctx context.Context, did string) ([]SheetSummary, error) {
 	return summaries(s.q.FavoriteSheets(ctx, did))
 }

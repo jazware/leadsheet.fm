@@ -79,7 +79,6 @@ func face(f *opentype.Font, size float64) font.Face {
 	return fc
 }
 
-// Sheet is what a sheet's card shows.
 type Sheet struct {
 	Title  string
 	Artist string
@@ -149,7 +148,6 @@ func (c *canvas) star(x, y, s float32, col color.Color) {
 	z.Draw(c.img, c.img.Bounds(), image.NewUniform(col), image.Point{})
 }
 
-// wordmark draws "leadsheet ✦" at the top left.
 func (c *canvas) wordmark() {
 	fc := face(black, 40)
 	end := c.text(fc, ink, margin, margin+30, "leadsheet")
@@ -202,7 +200,6 @@ func (c *canvas) png() ([]byte, error) {
 	return buf.Bytes(), nil
 }
 
-// SheetCard draws a sheet's preview image.
 func SheetCard(s Sheet) ([]byte, error) {
 	if err := loadFonts(); err != nil {
 		return nil, err
@@ -289,7 +286,6 @@ var (
 	defaultErr  error
 )
 
-// DefaultCard is the site-wide preview image.
 func DefaultCard() ([]byte, error) {
 	defaultOnce.Do(func() {
 		if defaultErr = loadFonts(); defaultErr != nil {

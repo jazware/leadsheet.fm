@@ -19,7 +19,6 @@ const (
 	orphanOAuthGrace = time.Hour
 )
 
-// CleanupResult counts what one Cleanup removed.
 type CleanupResult struct {
 	OGCards, WebSessions, OAuthRequests, OAuthSessions, SheetStats int64
 }

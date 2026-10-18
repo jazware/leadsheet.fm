@@ -105,7 +105,6 @@ func summaries(rows []dbq.SheetSummary, err error) ([]SheetSummary, error) {
 	return out, nil
 }
 
-// SheetURI builds the at-uri of a sheet record.
 func SheetURI(did, rkey string) string {
 	return fmt.Sprintf("at://%s/%s/%s", did, records.NSIDSheet, rkey)
 }
@@ -232,7 +231,6 @@ func (s *Store) Drafts(ctx context.Context, did string) ([]SheetSummary, error) 
 	return out, nil
 }
 
-// GetSheetSummary is GetSheet without the content.
 func (s *Store) GetSheetSummary(ctx context.Context, uri string) (*SheetSummary, error) {
 	r, err := s.q.GetSheetSummary(ctx, uri)
 	if err != nil {
@@ -256,12 +254,10 @@ func (s *Store) ListSheets(ctx context.Context, sort string, limit, offset int) 
 	return summaries(s.q.ListSheetsRecent(ctx, dbq.ListSheetsRecentParams{Limit: int32(limit), Offset: int32(offset)}))
 }
 
-// SheetsByDID lists an account's sheets, newest first.
 func (s *Store) SheetsByDID(ctx context.Context, did string) ([]SheetSummary, error) {
 	return summaries(s.q.SheetsByDID(ctx, did))
 }
 
-// Forks lists the sheets forked from uri, best first.
 func (s *Store) Forks(ctx context.Context, uri string) ([]SheetSummary, error) {
 	return summaries(s.q.Forks(ctx, uri))
 }
